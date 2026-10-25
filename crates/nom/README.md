@@ -76,6 +76,7 @@ Under `nh os`, `nh home` and `nh darwin`, the card shows what the build changes 
 tern-nom runs [dix](https://github.com/faukah/dix), the tool nh uses for its own diff, with `--output json`.
 It finds the new closure through the `--out-link` of the `nix build` that nh runs beside it.
 The table lists the system's own packages and every added or removed package, each with its version before and after, the part that changed highlighted, and its size change.
+A name longer than 30 characters, or a version list longer than 24, is cut in the middle so that it doesn't push the other columns out of the table.
 Dependencies whose version or size changed are listed in a second table below it, open by default and collapsible.
 
 ## Which commands draw a card

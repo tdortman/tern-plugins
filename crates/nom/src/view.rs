@@ -1087,6 +1087,27 @@ fn version_cell(this: &str, other: &str, tone: &str) -> Vec<ui::Span> {
     spans
 }
 
+/// Characters a package name keeps in the changes table.
+const NAME_CH: usize = 30;
+
+/// Characters each side of a version change keeps in the changes table.
+const VERSION_CH: usize = 24;
+
+/// `s` cut in the middle to at most `max` characters. Tern hides table
+/// columns by the full width of their text before it truncates any, so one
+/// very long cell would hide every other column.
+fn clip(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_owned();
+    }
+    let head = (max - 1) / 2;
+    let tail = max - 1 - head;
+    let start: String = s.chars().take(head).collect();
+    let end: String = s.chars().skip(n - tail).collect();
+    format!("{start}…{end}")
+}
+
 /// Packages as a table: status, name, version before, version after, size.
 fn package_table(packages: &[&Package], key: &str) -> Node {
     let mut table = ui::table()
@@ -1116,10 +1137,11 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
             _ => ("changed", "muted"),
         };
         let (old, new) = p.versions();
+        let (old, new) = (clip(&old, VERSION_CH), clip(&new, VERSION_CH));
         table = table.row(
             TableRow::new(i.to_string())
                 .cell("s", ui::span(word).style(tone))
-                .cell("n", ui::span(&p.name).style("strong"))
+                .cell("n", ui::span(clip(&p.name, NAME_CH)).style("strong"))
                 .cell("o", version_cell(&old, &new, "del"))
                 .cell("w", version_cell(&new, &old, "ins"))
                 .cell("d", ui::span(signed_size(p.size_delta)).style("num")),
@@ -1225,6 +1247,14 @@ mod tests {
     use super::*;
 
     const HASH: &str = "8nk26gfn51s07v339n5lycablfkl5lj7";
+
+    #[test]
+    fn clips_long_cells_in_the_middle() {
+        assert_eq!(clip("bluez", 5), "bluez");
+        assert_eq!(clip("abcdefghij", 5), "ab…ij");
+        // Counts characters, not bytes; the extra character goes to the end.
+        assert_eq!(clip("äöüßéèêë", 6), "äö…èêë");
+    }
 
     #[test]
     fn versions_split_between_parts() {
