@@ -1044,10 +1044,17 @@ fn lock_changes(state: &State) -> Option<Node> {
     )
 }
 
-/// `bytes` with a sign, as dix prints size changes.
-fn signed_size(bytes: i64) -> String {
+/// `bytes` with a sign, as dix prints size changes: growth in the warning
+/// color, shrinkage in the success color, and a change too small to show
+/// (under half a KiB, which `size` rounds to 0 KiB) muted.
+fn size_delta(bytes: i64) -> ui::Span {
     let sign = if bytes < 0 { '−' } else { '+' };
-    format!("{sign}{}", size(bytes.unsigned_abs()))
+    let tone = match bytes {
+        -511..=511 => "muted",
+        ..-511 => "success",
+        _ => "warning",
+    };
+    ui::span(format!("{sign}{}", size(bytes.unsigned_abs()))).style(format!("num {tone}"))
 }
 
 /// How many leading bytes `a` and `b` share, ending after a `.`, `-` or `_`
@@ -1148,7 +1155,7 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
                 .cell("n", ui::span(clip(&p.name, NAME_CH)).style("strong"))
                 .cell("o", version_cell(&old, &new, "del"))
                 .cell("w", version_cell(&new, &old, "ins"))
-                .cell("d", ui::span(signed_size(p.size_delta)).style("num")),
+                .cell("d", size_delta(p.size_delta)),
         );
     }
     table.into()
@@ -1200,7 +1207,7 @@ fn changes(state: &State) -> Option<Node> {
                 size(closure.size_new)
             ))
             .style("muted"),
-            ui::span(signed_size(delta)).style("num"),
+            size_delta(delta),
         ])
         .key("sum")
         .into(),
@@ -1258,6 +1265,17 @@ mod tests {
     use super::*;
 
     const HASH: &str = "8nk26gfn51s07v339n5lycablfkl5lj7";
+
+    #[test]
+    fn colours_size_changes_by_direction() {
+        let tone = |bytes| size_delta(bytes).s.unwrap_or_default();
+        assert_eq!(tone(2_800_000), "num warning");
+        assert_eq!(tone(-274_000), "num success");
+        // Rounds to "+0 KiB" / "−0 KiB": no direction worth a colour.
+        assert_eq!(tone(511), "num muted");
+        assert_eq!(tone(-511), "num muted");
+        assert_eq!(tone(-512), "num success");
+    }
 
     #[test]
     fn clips_long_cells_in_the_middle() {
