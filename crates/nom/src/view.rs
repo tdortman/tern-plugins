@@ -930,7 +930,7 @@ fn lock_changes(state: &State) -> Option<Node> {
     let mut table = ui::table()
         .key("t")
         .col(Column::new("s", "").priority(1.0))
-        .col(Column::new("n", "Input").truncate("start"))
+        .col(Column::new("n", "Input").truncate("start").priority(5.0))
         .col(
             Column::new("src", "Source")
                 .grow(1.0)
@@ -938,7 +938,7 @@ fn lock_changes(state: &State) -> Option<Node> {
                 .priority(2.0),
         )
         .col(Column::new("o", "Before").priority(3.0))
-        .col(Column::new("w", "After"));
+        .col(Column::new("w", "After").priority(4.0));
     let mut counts: Vec<(String, usize)> = Vec::new();
     for (i, c) in changes.iter().enumerate() {
         match counts.iter_mut().find(|(verb, _)| *verb == c.verb) {
@@ -1042,14 +1042,19 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
     let mut table = ui::table()
         .key(key)
         .col(Column::new("s", "").priority(1.0))
-        .col(Column::new("n", "Package").truncate("end"))
+        .col(Column::new("n", "Package").truncate("end").priority(5.0))
         .col(
             Column::new("o", "Before")
                 .grow(1.0)
                 .truncate("middle")
                 .priority(2.0),
         )
-        .col(Column::new("w", "After").grow(1.0).truncate("middle"))
+        .col(
+            Column::new("w", "After")
+                .grow(1.0)
+                .truncate("middle")
+                .priority(4.0),
+        )
         .col(Column::new("d", "Size").align("end").priority(3.0));
     for (i, p) in packages.iter().enumerate() {
         let (word, tone) = match p.status.as_str() {
