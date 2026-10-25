@@ -11,15 +11,14 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
 - What nix does besides builds and downloads, such as evaluating or querying caches, as a log under the counts.
   While nix runs, the log shows its last four lines. Once the run ends, it folds into one line that opens to its last 12 lines and a "Full log" link to all of it.
 - At the bottom, a progress bar for builds and a download bar over all paths fetched from caches.
-- One row per running build, with its stdenv phase, its last output line, and how long it has run.
-  If nom has timed the same package before, the row also has a progress bar against that estimate.
 - One row per path being fetched, with its own download bar.
-  A build or fetch gets its row once it has run for a second, so the many that finish sooner do not flash in and out.
+  A fetch gets its row once it has run for a second, so the many that finish sooner do not flash in and out.
 - A failed build as its name, exit code, its own last log lines, and the `nix log` command.
   Other errors show as nix prints them, with store paths cut down to the package name.
-- The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order.
+- The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order, with every derivation on its own row.
   Each one shows whether it is waiting, building, built, or failed, with its time.
-  Subtrees stay folded unless something in them failed, and you can open or fold any of them.
+  A running build's row also has its stdenv phase, its last output line, and how long it has run.
+  If nom has timed the same package before, the row also has a progress bar against that estimate.
 - Warnings in a folded section, one line each.
   A warning nix prints several times shows once with a count, store paths are cut down to the package name, and quoted option names show as code.
 - While nix fetches flake inputs, the current input with its download and the last three done, so the card keeps its height however many inputs there are.
@@ -28,7 +27,7 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
 - After `nom flake update` or `nom flake lock`, a table of the inputs that were updated, added, or removed: each input's source, and its revision and date before and after.
   A nested input's parent path and a `follows` are dimmed, so the input's own name stands out.
 - The paths fetched from caches, in a folded section.
-- Build logs stay hidden. Click a running build's row to show the last 8 lines of its log under the row, and click again to hide it.
+- Build logs stay hidden. Click a running or finished build's row to show the last 8 lines of its log under the row, and click again to hide it.
   The button above those lines expands them to the last 30 lines.
   A failed build's log is always shown in its failure block.
 - Output nix prints outside any build, in a folded section.

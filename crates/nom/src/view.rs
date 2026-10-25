@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 use tern_sdk::{
     nodes,
-    ui::{self, Bound, Column, Extent, Status, TableRow, TreeItem},
+    ui::{self, Bound, Column, Extent, Status, TableRow},
 };
 
 use crate::{
@@ -46,7 +46,7 @@ fn log_href(state: &State, drv: &str) -> Option<String> {
 pub type Node = ui::Node<Msg>;
 type View = ui::View<Msg>;
 
-/// Running builds or copies listed before the rest fold into "+N more".
+/// Running copies listed before the rest fold into "+N more".
 const ROWS: usize = 8;
 
 /// How long a build or copy runs before it gets a row.
@@ -239,117 +239,155 @@ fn settled<'a, T>(state: &State, running: &'a BTreeMap<u64, T>) -> Vec<(u64, &'a
         .collect()
 }
 
-/// One row per running build: name, phase, last line, timer. A click shows
-/// the build's log under its row.
-fn running_builds(state: &State, open: Option<&str>) -> Option<Node> {
-    let builds = settled(state, &state.builds);
-    if builds.is_empty() {
-        return None;
+/// One derivation's row under its tree guides, then its planned inputs.
+/// While it builds, the row has its phase, last line, estimate bar and timer;
+/// a click shows its log under the row.
+fn dep_rows(
+    state: &State,
+    node: &DepNode<'_>,
+    (guide, indent): (&str, &str),
+    open: Option<&str>,
+    rows: &mut Vec<Node>,
+) {
+    let drv = node.drv;
+    let status = state.status(drv);
+    let ended = state.outcome.is_some();
+    let mut row: Vec<Node> = Vec::new();
+    if !guide.is_empty() {
+        row.push(
+            ui::text(ui::span(guide).style("dim"))
+                .wrap("none")
+                .key("g")
+                .into(),
+        );
     }
-    let mut rows: Vec<Node> = Vec::new();
-    for &(id, b) in builds.iter().take(ROWS) {
+    let (indicator, style): (Node, &str) = match status {
         // Still running when the invocation ended: interrupted.
-        let indicator: Node = if state.outcome.is_some() {
-            ui::icon("stop").tone("warning").key("s").into()
-        } else {
+        DrvStatus::Building(_) if ended => {
+            (ui::icon("stop").tone("warning").key("s").into(), "warning")
+        }
+        DrvStatus::Building(_) => (
             ui::spinner()
                 .style("braille")
                 .tone("accent")
                 .key("s")
-                .into()
-        };
-        let mut row = nodes![
-            indicator,
-            // A long name wraps instead of pushing the row past the card;
-            // the last line gives way first.
-            ui::text(ui::span(&b.name).style("strong"))
-                .wrap("char")
-                .shrink(1.0)
-                .key("n"),
-        ];
-        if let Some(phase) = &b.phase {
-            row.push(ui::badge(phase).tone("info").key("p").into());
-        }
-        if let Some(machine) = &b.machine {
-            row.push(ui::badge(machine).tone("muted").key("m").into());
-        }
-        let line = b.last_line.as_deref().unwrap_or("");
-        row.push(
-            ui::text(ui::span(line).style("muted"))
-                .truncate("end")
-                .wrap("none")
-                .grow(1.0)
-                .shrink(100.0)
-                .key("l")
                 .into(),
-        );
-        // nom's estimate from earlier builds of the same package.
-        if let Some(est) = b.estimate {
-            let elapsed = state.started_ago(id);
-            let label = match est.checked_sub(elapsed) {
-                Some(left) => format!("~{} left", took(left)),
-                None => format!("over ~{}", took(est)),
-            };
-            row.push(
-                ui::progress()
-                    .value((elapsed.as_secs_f64() / est.as_secs_f64()).min(0.99))
-                    .label(label)
-                    .tone("accent")
-                    .min(Bound::w(Extent::Ch(24.0)))
-                    .key("e")
-                    .into(),
-            );
+            "accent",
+        ),
+        DrvStatus::Waiting if ended => (ui::icon("minus").tone("muted").key("s").into(), "muted"),
+        DrvStatus::Waiting => (ui::icon("clock").tone("muted").key("s").into(), "muted"),
+        DrvStatus::Built(_) => (ui::icon("check").tone("success").key("s").into(), "success"),
+        DrvStatus::Failed => (ui::icon("x").tone("error").key("s").into(), "error"),
+    };
+    row.push(indicator);
+    let mut name = ui::span(store_name(drv)).style(format!("{style} strong"));
+    if let Some(href) = log_href(state, drv) {
+        name = name.href(href);
+    }
+    // A long name wraps instead of pushing the row past the card; the last
+    // line gives way first.
+    row.push(ui::text(name).wrap("char").shrink(1.0).key("n").into());
+    let detail = match status {
+        DrvStatus::Building(id) => {
+            building_cells(state, id, &mut row);
+            None
         }
-        let mut timer = ui::elapsed().age(ms(state.started_ago(id)));
-        if state.outcome.is_some() {
-            timer =
-                timer.stopped(u64::try_from(state.started_ago(id).as_millis()).unwrap_or(u64::MAX));
-        }
-        row.push(timer.key("t").into());
-        let shown = open == Some(b.drv.as_str());
-        let mut node = ui::row()
-            .gap("sm")
-            .align("center")
-            .key(id.to_string())
+        DrvStatus::Waiting if ended => Some("not built".to_owned()),
+        DrvStatus::Waiting => state.estimate(drv, None).map(|e| format!("~{}", took(e))),
+        DrvStatus::Built(d) => Some(took(d)),
+        DrvStatus::Failed => Some("failed".to_owned()),
+    };
+    if let Some(detail) = detail {
+        row.push(ui::text(ui::span(detail).style("muted")).key("d").into());
+    }
+    let mut node_row = ui::row().gap("sm").align("center").key(drv).children(row);
+    if matches!(status, DrvStatus::Building(_)) || state.logs.contains_key(drv) {
+        let shown = open == Some(drv);
+        node_row = node_row
             .title(if shown {
                 "Hide the log"
             } else {
                 "Show the log"
             })
-            .on_click(Msg::ToggleLog(b.drv.clone()))
-            .children(row);
+            .on_click(Msg::ToggleLog(drv.to_owned()));
         if shown {
-            node = node.mark("pick");
-        }
-        rows.push(node.into());
-        if shown {
-            let lines = state.logs.get(&b.drv);
-            let skip = lines.map_or(0, |l| l.len().saturating_sub(OPEN_TAIL));
-            let text: String = lines
-                .into_iter()
-                .flatten()
-                .skip(skip)
-                .map(|l| format!("{l}\x1b[0m\r\n"))
-                .collect();
-            rows.push(
-                ui::ansi(text)
-                    .follow(true)
-                    .preview(PREVIEW)
-                    .max(Bound::h(Extent::Lines(30.0)))
-                    .key(format!("{id}.log"))
-                    .into(),
-            );
-            rows.extend(full_log(state, &b.drv, &format!("{id}.full")));
+            node_row = node_row.mark("pick");
         }
     }
-    if builds.len() > ROWS {
+    rows.push(node_row.into());
+    if open == Some(drv) {
+        let lines = state.logs.get(drv);
+        let skip = lines.map_or(0, |l| l.len().saturating_sub(OPEN_TAIL));
+        let text: String = lines
+            .into_iter()
+            .flatten()
+            .skip(skip)
+            .map(|l| format!("{l}\x1b[0m\r\n"))
+            .collect();
         rows.push(
-            ui::text(ui::span(format!("+{} more", builds.len() - ROWS)).style("muted"))
-                .key("more")
+            ui::ansi(text)
+                .follow(true)
+                .preview(PREVIEW)
+                .max(Bound::h(Extent::Lines(30.0)))
+                .key(format!("{drv}.log"))
+                .into(),
+        );
+        rows.extend(full_log(state, drv, &format!("{drv}.full")));
+    }
+    for (i, kid) in node.children.iter().enumerate() {
+        let (branch, rest) = if i + 1 == node.children.len() {
+            ("└─ ", "   ")
+        } else {
+            ("├─ ", "│  ")
+        };
+        let guides = (&*format!("{indent}{branch}"), &*format!("{indent}{rest}"));
+        dep_rows(state, kid, guides, open, rows);
+    }
+}
+
+/// A running build's phase, machine, last line, estimate bar and timer.
+fn building_cells(state: &State, id: u64, row: &mut Vec<Node>) {
+    let Some(b) = state.builds.get(&id) else {
+        return;
+    };
+    if let Some(phase) = &b.phase {
+        row.push(ui::badge(phase).tone("info").key("p").into());
+    }
+    if let Some(machine) = &b.machine {
+        row.push(ui::badge(machine).tone("muted").key("m").into());
+    }
+    let line = b.last_line.as_deref().unwrap_or("");
+    row.push(
+        ui::text(ui::span(line).style("muted"))
+            .truncate("end")
+            .wrap("none")
+            .grow(1.0)
+            .shrink(100.0)
+            .key("l")
+            .into(),
+    );
+    let elapsed = state.started_ago(id);
+    // nom's estimate from earlier builds of the same package.
+    if let Some(est) = b.estimate {
+        let label = match est.checked_sub(elapsed) {
+            Some(left) => format!("~{} left", took(left)),
+            None => format!("over ~{}", took(est)),
+        };
+        row.push(
+            ui::progress()
+                .value((elapsed.as_secs_f64() / est.as_secs_f64()).min(0.99))
+                .label(label)
+                .tone("accent")
+                .min(Bound::w(Extent::Ch(24.0)))
+                .key("e")
                 .into(),
         );
     }
-    Some(ui::col().key("builds").children(rows).into())
+    let mut timer = ui::elapsed().age(ms(elapsed));
+    if state.outcome.is_some() {
+        timer = timer.stopped(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+    }
+    row.push(timer.key("t").into());
 }
 
 /// One row per running copy with its own progress bar.
@@ -662,72 +700,16 @@ fn warnings(state: &State) -> Option<Node> {
     )
 }
 
-/// One derivation and its planned inputs, in plan order so siblings never
-/// swap places; whether anything in it failed, which opens it.
-fn dep_item(state: &State, node: &DepNode<'_>) -> (TreeItem, bool) {
-    let status = state.status(node.drv);
-    let (icon, style, detail) = match status {
-        DrvStatus::Waiting if state.outcome.is_some() => ("minus", "muted", "not built".to_owned()),
-        DrvStatus::Waiting => (
-            "clock",
-            "muted",
-            state
-                .estimate(node.drv, None)
-                .map(|e| format!("~{}", took(e)))
-                .unwrap_or_default(),
-        ),
-        DrvStatus::Building(id) => {
-            let build = state.builds.get(&id);
-            let phase = build.and_then(|b| b.phase.as_deref()).unwrap_or("building");
-            let mut detail = format!("{phase} · {}", took(state.started_ago(id)));
-            if let Some(est) = build.and_then(|b| b.estimate) {
-                detail.push_str(&format!(" / ~{}", took(est)));
-            }
-            if let Some(machine) = build.and_then(|b| b.machine.as_deref()) {
-                detail.push_str(&format!(" · {machine}"));
-            }
-            ("play", "accent", detail)
-        }
-        DrvStatus::Built(d) => ("check", "success", took(d)),
-        DrvStatus::Failed => ("x", "error", "failed".to_owned()),
-    };
-    let mut failed = status == DrvStatus::Failed;
-    let mut children = Vec::with_capacity(node.children.len());
-    for kid in &node.children {
-        let (item, kid_failed) = dep_item(state, kid);
-        failed |= kid_failed;
-        children.push(item);
-    }
-    let mut name = ui::span(store_name(node.drv)).style(format!("{style} strong"));
-    if let Some(href) = log_href(state, node.drv) {
-        name = name.href(href);
-    }
-    let label = vec![name, ui::span(format!("  {detail}")).style("muted")];
-    let mut item = TreeItem::new(node.drv, label);
-    item.icon = Some(icon.into());
-    if !children.is_empty() {
-        item.children = children;
-        item = item.open(failed);
-    }
-    (item, failed)
-}
-
-/// What nix builds, as a tree from what was asked for down to its inputs.
-fn deps(state: &State) -> Option<Node> {
+/// What nix builds, as a tree from what was asked for down to its inputs,
+/// every derivation on its own row.
+fn deps(state: &State, open: Option<&str>) -> Option<Node> {
     let roots = state.dependency_tree();
     if roots.is_empty() {
         return None;
     }
-    let only_root = roots.len() == 1;
-    let mut tree = ui::tree().key("t");
+    let mut rows = Vec::new();
     for root in &roots {
-        let (item, failed) = dep_item(state, root);
-        let open = failed || only_root;
-        tree = tree.item(if item.children.is_empty() {
-            item
-        } else {
-            item.open(open)
-        });
+        dep_rows(state, root, ("", ""), open, &mut rows);
     }
     let built = state.built.iter().filter(|b| !b.failed).count();
     let head = format!("Derivations · {built}/{} built", state.planned.len());
@@ -737,7 +719,7 @@ fn deps(state: &State) -> Option<Node> {
             .collapsible(true)
             .collapsed(matches!(state.outcome, Some((Outcome::Done, _))))
             .key("deps")
-            .child(tree)
+            .child(ui::col().key("t").children(rows))
             .into(),
     )
 }
@@ -1162,10 +1144,9 @@ pub fn view(state: &State, title: &str, open: Option<&str>) -> View {
     body.extend(fetch_inputs(state));
     body.extend(lock_changes(state));
     body.extend(changes(state));
-    body.extend(running_builds(state, open));
+    body.extend(deps(state, open));
     body.extend(running_copies(state));
     body.extend(errors(state));
-    body.extend(deps(state));
     body.extend(warnings(state));
     body.extend(fetched(state));
     body.extend(output(state));
@@ -1219,6 +1200,30 @@ mod tests {
         assert_eq!(
             shorten(&coloured),
             "derivation '\x1b[35;1mlinux.drv\x1b[0m'"
+        );
+    }
+
+    /// `node` in wire form, without its handlers.
+    fn wire(node: &Node) -> serde_json::Value {
+        let kids: Vec<_> = node.child_nodes().iter().map(wire).collect();
+        serde_json::json!({ "k": node.kind(), "p": node.props(), "c": kids })
+    }
+
+    #[test]
+    fn every_derivation_gets_a_row_under_its_dependents() {
+        let state = crate::state::tests::feed(crate::state::tests::FAILURE);
+        let tree = deps(&state, None).expect("a plan");
+        let node = ui::Node::<()>::from_json(&wire(&tree)).expect("valid");
+        let text = tern_sdk::plain(node, 100);
+        let rows: Vec<&str> = text.lines().skip(1).map(str::trim_end).collect();
+        assert_eq!(
+            rows,
+            [
+                "  top-5863",
+                "  └─  c-5863 failed",
+                "     ├─  a-5863 0.0s",
+                "     └─  b-5863 0.0s",
+            ]
         );
     }
 

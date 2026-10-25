@@ -804,7 +804,7 @@ impl State {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     /// `.drv` files for the fixtures' graph: `top` needs `c`, `c` needs `a`
@@ -840,7 +840,7 @@ mod tests {
     }
 
     /// Feeds a captured log.
-    fn feed(log: &str) -> State {
+    pub fn feed(log: &str) -> State {
         let mut state = State::new(History::default(), reader(log));
         for line in log.lines() {
             state.apply(Line::parse(line));
@@ -863,7 +863,7 @@ mod tests {
     const SUCCESS: &str = include_str!("../tests/lix-success.log");
 
     /// The same where one builder exits 3, failing its dependent.
-    const FAILURE: &str = include_str!("../tests/lix-failure.log");
+    pub const FAILURE: &str = include_str!("../tests/lix-failure.log");
 
     /// `nix build nixpkgs#gimp` (Lix 2.96): 21 paths substituted, nothing
     /// built, progress thinned.
