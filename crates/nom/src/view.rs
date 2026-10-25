@@ -63,6 +63,9 @@ const LOG_TAIL: usize = 60;
 /// few done, so the card does not grow with every input.
 const INPUT_ROWS: usize = 4;
 
+/// Fetched paths shown at once; the list scrolls through the rest.
+const FETCHED_ROWS: u32 = 8;
+
 /// Lines of a clicked build's log shown before "N more lines" expands it.
 const PREVIEW: u32 = 8;
 
@@ -789,19 +792,15 @@ fn fetched(state: &State) -> Option<Node> {
     if state.copied.is_empty() {
         return None;
     }
-    let rows: Vec<Node> = state
+    let items: Vec<Node> = state
         .copied
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            ui::row()
-                .gap("sm")
+            ui::item(&c.name)
+                .icon("download")
+                .value(size(c.bytes))
                 .key(format!("c{i}"))
-                .children(nodes![
-                    ui::icon("download").tone("info").key("i"),
-                    ui::text(&c.name).key("n").grow(1.0),
-                    ui::text(ui::span(size(c.bytes)).style("muted")).key("s"),
-                ])
                 .into()
         })
         .collect();
@@ -816,7 +815,7 @@ fn fetched(state: &State) -> Option<Node> {
             .collapsible(true)
             .collapsed(true)
             .key("fetched")
-            .children(rows)
+            .child(ui::list().max_lines(FETCHED_ROWS).key("l").children(items))
             .into(),
     )
 }

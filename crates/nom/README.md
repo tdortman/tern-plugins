@@ -29,7 +29,7 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
   Once the run ends, the inputs fold into one line with their count, which opens to the full list. Local `path:` and `git+file:` sources are not listed.
 - After `nom flake update` or `nom flake lock`, a table of the inputs that were updated, added, or removed: each input's source, and its revision and date before and after.
   A nested input's parent path and a `follows` are dimmed, so the input's own name stands out.
-- The paths fetched from caches, in a folded section.
+- The paths fetched from caches, in a folded section that shows eight at a time and scrolls through the rest.
 - Build logs stay hidden. Click a running or finished build's row to show the last 8 lines of its log under the row, and click again to hide it.
   The button above those lines expands them to the last 30 lines.
   A failed build's log is always shown in its failure block.
