@@ -1087,11 +1087,13 @@ fn version_cell(this: &str, other: &str, tone: &str) -> Vec<ui::Span> {
     spans
 }
 
-/// Characters a package name keeps in the changes table.
-const NAME_CH: usize = 30;
+/// Characters a package name keeps in the changes table. With
+/// `VERSION_CH`, the status word and the size, a row fits a half-width
+/// pane of about 100 columns.
+const NAME_CH: usize = 24;
 
 /// Characters each side of a version change keeps in the changes table.
-const VERSION_CH: usize = 24;
+const VERSION_CH: usize = 20;
 
 /// `s` cut in the middle to at most `max` characters. Tern hides table
 /// columns by the full width of their text before it truncates any, so one
@@ -1109,16 +1111,18 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 /// Packages as a table: status, name, version before, version after, size.
+/// Where a row still doesn't fit, Before goes first: the status word and
+/// the highlighted part of After still say what changed.
 fn package_table(packages: &[&Package], key: &str) -> Node {
     let mut table = ui::table()
         .key(key)
-        .col(Column::new("s", "").priority(1.0))
+        .col(Column::new("s", "").priority(2.0))
         .col(Column::new("n", "Package").truncate("end").priority(5.0))
         .col(
             Column::new("o", "Before")
                 .grow(1.0)
                 .truncate("middle")
-                .priority(2.0),
+                .priority(1.0),
         )
         .col(
             Column::new("w", "After")
