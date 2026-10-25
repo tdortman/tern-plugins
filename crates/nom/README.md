@@ -19,6 +19,7 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
   While nix runs, the tree shows only what matters now, as nom does: what you asked for, every running or failed build, and the derivations between them.
   After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation.
   Each row shows whether the derivation is waiting, building, built, or failed, with its time.
+  Every row stays on one line so the tree's guide lines stay joined. A name too long for the row is cut, and hovering over it shows the whole name.
   A running build's row also has its stdenv phase, its last output line, and how long it has run.
   If nom has timed the same package before, the row also has a progress bar against that estimate.
 - Warnings in a folded section, one line each.

@@ -279,6 +279,7 @@ fn dep_rows(
         row.push(
             ui::text(ui::span(guide).style("dim"))
                 .wrap("none")
+                .shrink(0.0)
                 .key("g")
                 .into(),
         );
@@ -306,9 +307,17 @@ fn dep_rows(
     if let Some(href) = log_href(state, drv) {
         name = name.href(href);
     }
-    // A long name wraps instead of pushing the row past the card; the last
-    // line gives way first.
-    row.push(ui::text(name).wrap("char").shrink(1.0).key("n").into());
+    // One line per row keeps the guides joined; a long name is cut after the
+    // last line gave way, with the whole name as its tooltip.
+    row.push(
+        ui::text(name)
+            .wrap("none")
+            .truncate("end")
+            .shrink(1.0)
+            .title(store_name(drv))
+            .key("n")
+            .into(),
+    );
     let detail = match status {
         DrvStatus::Building(id) => {
             building_cells(state, id, &mut row);
@@ -320,7 +329,13 @@ fn dep_rows(
         DrvStatus::Failed => Some("failed".to_owned()),
     };
     if let Some(detail) = detail {
-        row.push(ui::text(ui::span(detail).style("muted")).key("d").into());
+        row.push(
+            ui::text(ui::span(detail).style("muted"))
+                .wrap("none")
+                .shrink(0.0)
+                .key("d")
+                .into(),
+        );
     }
     let mut node_row = ui::row().gap("sm").align("center").key(drv).children(row);
     if matches!(status, DrvStatus::Building(_)) || state.logs.contains_key(drv) {
@@ -425,7 +440,7 @@ fn building_cells(state: &State, id: u64, row: &mut Vec<Node>) {
     if state.outcome.is_some() {
         timer = timer.stopped(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
     }
-    row.push(timer.key("t").into());
+    row.push(timer.shrink(0.0).key("t").into());
 }
 
 /// One row per running copy with its own progress bar.
