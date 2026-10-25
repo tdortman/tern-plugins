@@ -24,7 +24,7 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
   If nom has timed the same package before, the row also has a progress bar against that estimate.
 - Warnings in a folded section, one line each.
   A warning nix prints several times shows once with a count, store paths are cut down to the package name, and quoted option names show as code.
-- While nix fetches flake inputs, the current input with its download and the last seven done, so the card keeps its height however many inputs there are.
+- While nix fetches flake inputs, the current input with its download and the last three done, so the card keeps its height however many inputs there are.
   When nix stops reporting progress after a download because it is unpacking the source, the row says so instead of showing a full bar.
   Once the run ends, the inputs fold into one line with their count, which opens to the full list. Local `path:` and `git+file:` sources are not listed.
 - After `nom flake update` or `nom flake lock`, a table of the inputs that were updated, added, or removed: each input's source, and its revision and date before and after.

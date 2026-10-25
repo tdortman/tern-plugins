@@ -61,7 +61,7 @@ const LOG_TAIL: usize = 60;
 
 /// Flake inputs shown while nix fetches them: the current one and the last
 /// few done, so the card does not grow with every input.
-const INPUT_ROWS: usize = 8;
+const INPUT_ROWS: usize = 4;
 
 /// Fetched paths shown at once; the list scrolls through the rest.
 const FETCHED_ROWS: u32 = 8;
