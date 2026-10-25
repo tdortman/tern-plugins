@@ -7,14 +7,18 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
 
 ## What the card shows
 
-- Built and fetched counts, and a timer.
-- What nix does besides builds and downloads, such as evaluating or querying caches, as a log under the counts.
+Details come first and what matters most comes last, as nh and nom order their output, so the bottom of the card, which stays in view in the terminal, holds it.
+From top to bottom:
+
+- What nix does besides builds and downloads, such as evaluating or querying caches, as a log.
   While nix runs, the log shows its last four lines. Once the run ends, it folds into one line that opens to its last 12 lines and a "Full log" link to all of it.
-- At the bottom, a progress bar for builds and a download bar over all paths fetched from caches.
-- One row per path being fetched, with its own download bar.
-  A fetch gets its row once it has run for a second, so the many that finish sooner do not flash in and out.
-- A failed build as its name, exit code, its own last log lines, and the `nix log` command.
-  Other errors show as nix prints them, with store paths cut down to the package name.
+- While nix fetches flake inputs, the current input with its download and the last three done, so the card keeps its height however many inputs there are.
+  When nix stops reporting progress after a download because it is unpacking the source, the row says so instead of showing a full bar.
+  Once the run ends, the inputs fold into one line with their count, which opens to the full list. Local `path:` and `git+file:` sources are not listed.
+- Warnings in a folded section, one line each.
+  A warning nix prints several times shows once with a count, store paths are cut down to the package name, and quoted option names show as code.
+- The paths fetched from caches, in a folded section that shows eight at a time and scrolls through the rest.
+- Output nix prints outside any build, in a folded section.
 - The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order.
   While nix runs, the tree shows only what matters now, as nom does: what you asked for, every running or failed build, and the derivations between them.
   After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation.
@@ -22,22 +26,22 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
   Every row stays on one line so the tree's guide lines stay joined. A name too long for the row is cut, and hovering over it shows the whole name.
   A running build's row also has its stdenv phase, its last output line, and how long it has run.
   If nom has timed the same package before, the row also has a progress bar against that estimate.
-- Warnings in a folded section, one line each.
-  A warning nix prints several times shows once with a count, store paths are cut down to the package name, and quoted option names show as code.
-- While nix fetches flake inputs, the current input with its download and the last three done, so the card keeps its height however many inputs there are.
-  When nix stops reporting progress after a download because it is unpacking the source, the row says so instead of showing a full bar.
-  Once the run ends, the inputs fold into one line with their count, which opens to the full list. Local `path:` and `git+file:` sources are not listed.
+  Build logs stay hidden. Click a running or finished build's row to show the last 8 lines of its log under the row, and click again to hide it.
+  The button above those lines expands them to the last 30 lines.
+- One row per path being fetched, with its own download bar.
+  A fetch gets its row once it has run for a second, so the many that finish sooner do not flash in and out.
+- A failed build as its name, exit code, its own last log lines, and the `nix log` command.
+  Other errors show as nix prints them, with store paths cut down to the package name.
 - After `nom flake update` or `nom flake lock`, a table of the inputs that were updated, added, or removed: each input's source, and its revision and date before and after.
   A nested input's parent path and a `follows` are dimmed, so the input's own name stands out.
-- The paths fetched from caches, in a folded section that shows eight at a time and scrolls through the rest.
-- Build logs stay hidden. Click a running or finished build's row to show the last 8 lines of its log under the row, and click again to hide it.
-  The button above those lines expands them to the last 30 lines.
-  A failed build's log is always shown in its failure block.
-- Output nix prints outside any build, in a folded section.
-- Every build's whole log and nix's activity log, without colors, in `$XDG_CACHE_HOME/tern-nom/logs`, one directory per run, keeping the last 10 runs.
-  Click "Full log" under an open log, a failure or the activity log to open the file in a Tern file block, where Tern's search finds any line.
-  The block reloads as the build prints.
-  After `nom` exits, a plain click no longer opens the log. Instead, ⌘-click the link or a derivation's name in the tree, or right-click it and choose Open file.
+- Under nh, what the build changes against the running system, with the path and size totals last (see below).
+- While nix runs, a progress bar for builds and a download bar over all paths fetched from caches.
+- Last, the built and fetched counts, warnings and errors, and a timer.
+
+Every build's whole log and nix's activity log are written, without colors, to `$XDG_CACHE_HOME/tern-nom/logs`, one directory per run, keeping the last 10 runs.
+Click "Full log" under an open log, a failure or the activity log to open the file in a Tern file block, where Tern's search finds any line.
+The block reloads as the build prints.
+After `nom` exits, a plain click no longer opens the log. Instead, ⌘-click the link or a derivation's name in the tree, or right-click it and choose Open file.
 
 Ctrl+C stops nix as usual. The card then reads Cancelled and `nom` exits with 130.
 
@@ -78,6 +82,7 @@ It finds the new closure through the `--out-link` of the `nix build` that nh run
 The table lists the system's own packages and every added or removed package, each with its version before and after, the part that changed highlighted, and its size change.
 A name longer than 24 characters, or a version list longer than 20, is cut in the middle so that a row fits a half-width pane. In a pane too narrow even for that, the Before column is hidden first, then the status word.
 Dependencies whose version or size changed are listed in a second table below it, open by default and collapsible.
+Under both tables, the path count and closure size before and after, with the size change, close the section, as they close dix's own output.
 
 ## Which commands draw a card
 

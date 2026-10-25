@@ -1156,7 +1156,8 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
 
 /// What the build changes against the current system, like nh's dix diff:
 /// the system's own packages and everything added or removed, then the
-/// dependencies that only changed version or size in their own section.
+/// dependencies that only changed version or size in their own section,
+/// then the path and size totals last, as dix prints them.
 fn changes(state: &State) -> Option<Node> {
     let closure = state.closure.as_ref()?;
     // dix's order: changed, then added, then removed.
@@ -1174,20 +1175,7 @@ fn changes(state: &State) -> Option<Node> {
     let p = &closure.paths;
     let delta = i64::try_from(closure.size_new).unwrap_or(i64::MAX)
         - i64::try_from(closure.size_old).unwrap_or(i64::MAX);
-    let mut body = nodes![
-        ui::text(vec![
-            ui::span(format!("{} → {} paths", p.old, p.new)).style("muted"),
-            ui::span(format!(" (+{}, −{})", p.added, p.removed)).style("dim"),
-            ui::span(format!(
-                " · {} → {} ",
-                size(closure.size_old),
-                size(closure.size_new)
-            ))
-            .style("muted"),
-            ui::span(signed_size(delta)).style("num"),
-        ])
-        .key("sum"),
-    ];
+    let mut body: Vec<Node> = Vec::new();
     if !picked.is_empty() {
         body.push(package_table(&picked, "pkgs"));
     }
@@ -1202,6 +1190,21 @@ fn changes(state: &State) -> Option<Node> {
                 .into(),
         );
     }
+    body.push(
+        ui::text(vec![
+            ui::span(format!("{} → {} paths", p.old, p.new)).style("muted"),
+            ui::span(format!(" (+{}, −{})", p.added, p.removed)).style("dim"),
+            ui::span(format!(
+                " · {} → {} ",
+                size(closure.size_old),
+                size(closure.size_new)
+            ))
+            .style("muted"),
+            ui::span(signed_size(delta)).style("num"),
+        ])
+        .key("sum")
+        .into(),
+    );
     let head = match picked.len() {
         0 if deps.is_empty() => "Changes · none".to_owned(),
         1 => "Changes · 1 package".to_owned(),
@@ -1216,7 +1219,10 @@ fn changes(state: &State) -> Option<Node> {
     )
 }
 
-/// The whole card; `open` is the `.drv` whose log the user opened.
+/// The whole card, details first and what matters most last, so the end of
+/// the card that stays in view holds it, as nh and nom keep it: the build
+/// tree, errors, what changed, the progress bars and the summary line.
+/// `open` is the `.drv` whose log the user opened.
 pub fn view(state: &State, title: &str, open: Option<&str>) -> View {
     let status = match state.outcome {
         None => Status::Running,
@@ -1224,20 +1230,21 @@ pub fn view(state: &State, title: &str, open: Option<&str>) -> View {
         Some((Outcome::Failed, _)) => Status::Error,
         Some((Outcome::Cancelled, _)) => Status::Cancelled,
     };
-    let mut body: Vec<Node> = vec![summary(state)];
+    let mut body: Vec<Node> = Vec::new();
     body.extend(activity(state));
-    body.extend(state.flake.iter().flat_map(crate::flake::Output::view));
     body.extend(fetch_inputs(state));
-    body.extend(lock_changes(state));
-    body.extend(changes(state));
-    body.extend(deps(state, open));
-    body.extend(running_copies(state));
-    body.extend(errors(state));
     body.extend(warnings(state));
     body.extend(fetched(state));
     body.extend(output(state));
+    body.extend(deps(state, open));
+    body.extend(running_copies(state));
+    body.extend(errors(state));
+    body.extend(state.flake.iter().flat_map(crate::flake::Output::view));
+    body.extend(lock_changes(state));
+    body.extend(changes(state));
     body.extend(progress(state));
     body.extend(downloads(state));
+    body.push(summary(state));
     View::new().main([ui::card()
         .head(ui::span(title).style("mono"))
         .status(status)
