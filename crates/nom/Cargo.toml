@@ -1,6 +1,6 @@
 [package]
 name = "tern-nom"
-version = "0.19.3"
+version = "0.20.0"
 description = "nix-output-monitor drawn natively in Tern over the Tern Surface Protocol"
 edition.workspace = true
 license.workspace = true
