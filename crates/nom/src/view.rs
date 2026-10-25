@@ -490,6 +490,10 @@ fn shorten(text: &str) -> String {
             while start > copied && is_path(b[start - 1]) {
                 start -= 1;
             }
+            // A store path is absolute; this skips the `1m` of a colour code glued to it.
+            while b[start] != b'/' {
+                start += 1;
+            }
             out.push_str(&text[copied..start]);
             copied = i + 34;
             i = copied;
@@ -1210,6 +1214,12 @@ mod tests {
             "warning: defined in `nix/systems/vm/default.nix' → `a.drv`"
         );
         assert_eq!(shorten("no paths here"), "no paths here");
+        // The colour code before the path stays whole.
+        let coloured = format!("derivation '\x1b[35;1m/nix/store/{HASH}-linux.drv\x1b[0m'");
+        assert_eq!(
+            shorten(&coloured),
+            "derivation '\x1b[35;1mlinux.drv\x1b[0m'"
+        );
     }
 
     #[test]
