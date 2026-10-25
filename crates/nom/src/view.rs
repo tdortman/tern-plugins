@@ -1,6 +1,10 @@
 //! The state as a Tern card.
 
-use std::{collections::BTreeMap, fmt::Write as _, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Write as _,
+    time::Duration,
+};
 
 use tern_sdk::{
     nodes,
@@ -255,7 +259,8 @@ fn settled<'a, T>(state: &State, running: &'a BTreeMap<u64, T>) -> Vec<(u64, &'a
         .collect()
 }
 
-/// One derivation's row under its tree guides, then its planned inputs.
+/// One derivation's row under its tree guides, then its planned inputs in
+/// `keep` (all of them without it).
 /// While it builds, the row has its phase, last line, estimate bar and timer;
 /// a click shows its log under the row.
 fn dep_rows(
@@ -263,6 +268,7 @@ fn dep_rows(
     node: &DepNode<'_>,
     (guide, indent): (&str, &str),
     open: Option<&str>,
+    keep: Option<&HashSet<&str>>,
     rows: &mut Vec<Node>,
 ) {
     let drv = node.drv;
@@ -345,15 +351,36 @@ fn dep_rows(
         );
         rows.extend(full_log(state, drv, &format!("{drv}.full")));
     }
-    for (i, kid) in node.children.iter().enumerate() {
-        let (branch, rest) = if i + 1 == node.children.len() {
+    let kids: Vec<_> = node
+        .children
+        .iter()
+        .filter(|k| keep.is_none_or(|keep| keep.contains(k.drv)))
+        .collect();
+    for (i, kid) in kids.iter().enumerate() {
+        let (branch, rest) = if i + 1 == kids.len() {
             ("└─ ", "   ")
         } else {
             ("├─ ", "│  ")
         };
         let guides = (&*format!("{indent}{branch}"), &*format!("{indent}{rest}"));
-        dep_rows(state, kid, guides, open, rows);
+        dep_rows(state, kid, guides, open, keep, rows);
     }
+}
+
+/// Adds to `keep` every derivation under `node`, itself included, that is
+/// building or failed or needs one that is; whether `node` was added.
+fn mark_active<'a>(state: &State, node: &DepNode<'a>, keep: &mut HashSet<&'a str>) -> bool {
+    let mut active = matches!(
+        state.status(node.drv),
+        DrvStatus::Building(_) | DrvStatus::Failed
+    );
+    for kid in &node.children {
+        active |= mark_active(state, kid, keep);
+    }
+    if active {
+        keep.insert(node.drv);
+    }
+    active
 }
 
 /// A running build's phase, machine, last line, estimate bar and timer.
@@ -709,16 +736,25 @@ fn warnings(state: &State) -> Option<Node> {
     )
 }
 
-/// What nix builds, as a tree from what was asked for down to its inputs,
-/// every derivation on its own row.
+/// What nix builds, as a tree from what was asked for down to its inputs.
+/// Until a run succeeds, only what matters now shows under the roots:
+/// running and failed builds and the derivations that need them.
 fn deps(state: &State, open: Option<&str>) -> Option<Node> {
     let roots = state.dependency_tree();
     if roots.is_empty() {
         return None;
     }
+    let succeeded = matches!(state.outcome, Some((Outcome::Done, _)));
+    let keep = (!succeeded).then(|| {
+        let mut keep = HashSet::new();
+        for root in &roots {
+            mark_active(state, root, &mut keep);
+        }
+        keep
+    });
     let mut rows = Vec::new();
     for root in &roots {
-        dep_rows(state, root, ("", ""), open, &mut rows);
+        dep_rows(state, root, ("", ""), open, keep.as_ref(), &mut rows);
     }
     let built = state.built.iter().filter(|b| !b.failed).count();
     let head = format!("Derivations · {built}/{} built", state.planned.len());
@@ -726,7 +762,7 @@ fn deps(state: &State, open: Option<&str>) -> Option<Node> {
         ui::section()
             .head(head)
             .collapsible(true)
-            .collapsed(matches!(state.outcome, Some((Outcome::Done, _))))
+            .collapsed(succeeded)
             .key("deps")
             .child(ui::col().key("t").children(rows))
             .into(),
@@ -1219,20 +1255,43 @@ mod tests {
         serde_json::json!({ "k": node.kind(), "p": node.props(), "c": kids })
     }
 
-    #[test]
-    fn every_derivation_gets_a_row_under_its_dependents() {
-        let state = crate::state::tests::feed(crate::state::tests::FAILURE);
-        let tree = deps(&state, None).expect("a plan");
+    /// The derivations section's rows as plain text.
+    fn tree_rows(state: &State) -> Vec<String> {
+        let tree = deps(state, None).expect("a plan");
         let node = ui::Node::<()>::from_json(&wire(&tree)).expect("valid");
         let text = tern_sdk::plain(node, 100);
-        let rows: Vec<&str> = text.lines().skip(1).map(str::trim_end).collect();
+        text.lines()
+            .skip(1)
+            .map(|l| l.trim_end().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn tree_shows_what_matters_until_the_run_succeeds() {
+        use crate::state::tests::{SUCCESS, feed};
+        // `c` builds after its inputs `a` and `b` were built.
+        let upto = SUCCESS
+            .lines()
+            .position(|l| l.contains(r#""text":"building '"#) && l.contains("-c-"))
+            .expect("c builds");
+        let running: Vec<&str> = SUCCESS.lines().take(upto + 1).collect();
+        let rows = tree_rows(&feed(&running.join("\n")));
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        assert_eq!(rows[0], "  top-18439");
+        assert!(rows[1].starts_with("  └─  ... c-18439"), "{rows:#?}");
+
+        let mut state = feed(SUCCESS);
+        state.finish(Outcome::Done);
         assert_eq!(
-            rows,
+            tree_rows(&state)
+                .iter()
+                .map(|r| r.split(" 0.").next().unwrap_or_default())
+                .collect::<Vec<_>>(),
             [
-                "  top-5863",
-                "  └─  c-5863 failed",
-                "     ├─  a-5863 0.0s",
-                "     └─  b-5863 0.0s",
+                "  top-18439",
+                "  └─  c-18439",
+                "     ├─  a-18439",
+                "     └─  b-18439",
             ]
         );
     }

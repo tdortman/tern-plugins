@@ -861,10 +861,10 @@ pub mod tests {
 
     /// `nix-build -v --log-format internal-json` (Lix 2.96) of four
     /// derivations and one substitution.
-    const SUCCESS: &str = include_str!("../tests/lix-success.log");
+    pub const SUCCESS: &str = include_str!("../tests/lix-success.log");
 
     /// The same where one builder exits 3, failing its dependent.
-    pub const FAILURE: &str = include_str!("../tests/lix-failure.log");
+    const FAILURE: &str = include_str!("../tests/lix-failure.log");
 
     /// `nix build nixpkgs#gimp` (Lix 2.96): 21 paths substituted, nothing
     /// built, progress thinned.

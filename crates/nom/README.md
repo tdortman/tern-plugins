@@ -15,8 +15,10 @@ Everywhere else it runs the real `nom`, so nothing changes outside Tern.
   A fetch gets its row once it has run for a second, so the many that finish sooner do not flash in and out.
 - A failed build as its name, exit code, its own last log lines, and the `nix log` command.
   Other errors show as nix prints them, with store paths cut down to the package name.
-- The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order, with every derivation on its own row.
-  Each one shows whether it is waiting, building, built, or failed, with its time.
+- The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order.
+  While nix runs, the tree shows only what matters now, as nom does: what you asked for, every running or failed build, and the derivations between them.
+  After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation.
+  Each row shows whether the derivation is waiting, building, built, or failed, with its time.
   A running build's row also has its stdenv phase, its last output line, and how long it has run.
   If nom has timed the same package before, the row also has a progress bar against that estimate.
 - Warnings in a folded section, one line each.
