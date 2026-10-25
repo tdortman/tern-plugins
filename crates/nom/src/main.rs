@@ -100,6 +100,7 @@ fn connect() -> Option<Session<Msg>> {
 /// `nom --nh <nh> <args>`, installed as `nh`: runs nh, and in a Tern pane
 /// adds `--diff never` to `nh os|home|darwin <verb>`, whose package diff
 /// the card draws.
+#[allow(unsafe_code, reason = "signal handling, subreaper and reaping for nh")]
 fn nh(real: &str, args: &[String]) -> ExitCode {
     if !in_tern_pane() {
         let err = Command::new(real).arg0("nh").args(args).exec();
@@ -171,7 +172,7 @@ fn parent_command() -> Option<String> {
     let args = diff::cmdline(std::os::unix::process::parent_id())?;
     if let Some(envrc) = args.iter().find_map(|a| a.split_once("source_env ")) {
         let path = envrc.1.trim_start_matches('$').trim_matches('\'');
-        let dir = Path::new(path).parent().unwrap_or(Path::new(path));
+        let dir = Path::new(path).parent().unwrap_or_else(|| Path::new(path));
         let dir = dir.to_string_lossy();
         let home = std::env::var("HOME").unwrap_or_default();
         return Some(match dir.strip_prefix(&home) {
@@ -241,7 +242,7 @@ fn draw(
 fn monitor(
     mut session: Session<Msg>,
     source: Source,
-    title: String,
+    title: &str,
 ) -> Result<ExitCode, tern_sdk::Error> {
     // A pipe (direnv, nh) shows a card once nix does something worth one, so
     // a cached reload stays quiet; a typed command shows one at once.
@@ -264,6 +265,7 @@ fn monitor(
                 .args(["-v", "--log-format", "internal-json"])
                 .args(rest);
             // SAFETY: isatty has no preconditions.
+            #[allow(unsafe_code, reason = "isatty")]
             let terminal = unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1;
             if let Some(flake_sub) = rest
                 .first()
@@ -308,8 +310,8 @@ fn monitor(
         draw(
             &mut session,
             &mut sf,
-            &title,
-            view::view(&state, &title, None),
+            title,
+            view::view(&state, title, None),
         )?;
     }
     let mut last = Instant::now();
@@ -331,8 +333,8 @@ fn monitor(
                 draw(
                     &mut session,
                     &mut sf,
-                    &title,
-                    view::view(&state, &title, open.as_deref()),
+                    title,
+                    view::view(&state, title, open.as_deref()),
                 )?;
                 last = Instant::now();
             }
@@ -377,8 +379,8 @@ fn monitor(
             draw(
                 &mut session,
                 &mut sf,
-                &title,
-                view::view(&state, &title, open.as_deref()),
+                title,
+                view::view(&state, title, open.as_deref()),
             )?;
             last = Instant::now();
             dirty = false;
@@ -402,8 +404,8 @@ fn monitor(
             draw(
                 &mut session,
                 &mut sf,
-                &title,
-                view::view(&state, &title, open.as_deref()),
+                title,
+                view::view(&state, title, open.as_deref()),
             )?;
             state.closure = target.diff(started);
         }
@@ -416,8 +418,8 @@ fn monitor(
         draw(
             &mut session,
             &mut sf,
-            &title,
-            view::view(&state, &title, open.as_deref()),
+            title,
+            view::view(&state, title, open.as_deref()),
         )?;
     }
     session.close()?;
@@ -450,6 +452,7 @@ fn build_only(args: &[String]) -> Vec<String> {
     out
 }
 
+#[allow(unsafe_code, reason = "installing and resetting signal handlers")]
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let help = args.iter().any(|a| a == "--help");
@@ -477,7 +480,7 @@ fn main() -> ExitCode {
         Source::Spawn(_) => format!("nom {}", args.join(" ")),
         Source::Stdin => parent_command().unwrap_or_else(|| "nix".to_owned()),
     };
-    let code = match monitor(session, source, title) {
+    let code = match monitor(session, source, &title) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("tern-nom: {e}");

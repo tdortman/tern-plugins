@@ -1,4 +1,4 @@
-//! The parts of a `.drv` file (ATerm) the dependency tree needs.
+//! The parts of a `.drv` file (`ATerm`) the dependency tree needs.
 
 /// What a derivation file says about itself.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -9,16 +9,16 @@ pub struct DrvInfo {
     pub pname: Option<String>,
 }
 
-/// One ATerm value.
+/// One `ATerm` value.
 #[derive(Debug)]
 enum Term {
     Str(String),
-    List(Vec<Term>),
+    List(Vec<Self>),
     /// A tuple, or a constructor application (`Derive(…)`).
-    App(Vec<Term>),
+    App(Vec<Self>),
 }
 
-/// A tiny recursive-descent ATerm reader.
+/// A tiny recursive-descent `ATerm` reader.
 struct Parser<'a> {
     rest: &'a str,
 }

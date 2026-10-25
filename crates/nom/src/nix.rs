@@ -34,7 +34,7 @@ pub mod res {
 }
 
 /// One `@nix {…}` message.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "action", rename_all = "lowercase")]
 pub enum Message {
     /// An activity began.
@@ -84,7 +84,7 @@ pub enum Message {
 }
 
 /// One line of nix's stderr.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Line {
     /// A structured message.
     Nix(Message),

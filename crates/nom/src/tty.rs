@@ -19,6 +19,7 @@ pub struct DevTty {
     saved: libc::termios,
 }
 
+#[allow(unsafe_code, reason = "termios calls on the open /dev/tty")]
 impl DevTty {
     /// Opens the controlling terminal and enters raw mode.
     pub fn open() -> io::Result<Self> {
@@ -44,6 +45,7 @@ impl DevTty {
     }
 }
 
+#[allow(unsafe_code, reason = "poll and termios calls on the open /dev/tty")]
 impl Terminal for DevTty {
     fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.file.write_all(bytes)?;

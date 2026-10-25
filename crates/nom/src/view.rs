@@ -1,6 +1,6 @@
 //! The state as a Tern card.
 
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, fmt::Write as _, time::Duration};
 
 use tern_sdk::{
     nodes,
@@ -65,9 +65,25 @@ const PREVIEW: u32 = 8;
 /// Lines of a clicked build's log sent, so expanding shows a longer tail.
 const OPEN_TAIL: usize = 200;
 
+/// `n` as the nearest `f64`, for progress ratios and sizes.
+fn approx(n: u64) -> f64 {
+    let hi = u32::try_from(n >> 32).unwrap_or(u32::MAX);
+    let lo = u32::try_from(n & u64::from(u32::MAX)).unwrap_or(u32::MAX);
+    f64::from(hi).mul_add(4_294_967_296.0, f64::from(lo))
+}
+
+/// `lines` for Tern's `ansi` element: each with colors reset, `\r\n`-ended.
+fn ansi_text(lines: impl IntoIterator<Item = impl std::fmt::Display>) -> String {
+    let mut out = String::new();
+    for l in lines {
+        let _ = write!(out, "{l}\x1b[0m\r\n");
+    }
+    out
+}
+
 /// `bytes` as KiB/MiB/GiB.
 fn size(bytes: u64) -> String {
-    let kib = bytes as f64 / 1024.0;
+    let kib = approx(bytes) / 1024.0;
     if kib < 1024.0 {
         format!("{kib:.0} KiB")
     } else if kib < 1024.0 * 1024.0 {
@@ -318,12 +334,7 @@ fn dep_rows(
     if open == Some(drv) {
         let lines = state.logs.get(drv);
         let skip = lines.map_or(0, |l| l.len().saturating_sub(OPEN_TAIL));
-        let text: String = lines
-            .into_iter()
-            .flatten()
-            .skip(skip)
-            .map(|l| format!("{l}\x1b[0m\r\n"))
-            .collect();
+        let text = ansi_text(lines.into_iter().flatten().skip(skip));
         rows.push(
             ui::ansi(text)
                 .follow(true)
@@ -400,11 +411,9 @@ fn running_copies(state: &State) -> Option<Node> {
     for &(id, c) in copies.iter().take(ROWS) {
         let mut bar = ui::progress().tone("info").grow(1.0).key("b");
         if c.expected > 0 {
-            bar = bar.value(c.done as f64 / c.expected as f64).label(format!(
-                "{} / {}",
-                size(c.done),
-                size(c.expected)
-            ));
+            bar = bar
+                .value(approx(c.done) / approx(c.expected))
+                .label(format!("{} / {}", size(c.done), size(c.expected)));
         }
         let from = c
             .from
@@ -453,7 +462,7 @@ fn progress(state: &State) -> Option<Node> {
     }
     let mut label = format!("{}/{} built", b.done, b.expected);
     if b.running > 0 {
-        label.push_str(&format!(" · {} running", b.running));
+        let _ = write!(label, " · {} running", b.running);
     }
     Some(
         ui::row()
@@ -463,7 +472,7 @@ fn progress(state: &State) -> Option<Node> {
             .children(nodes![
                 ui::icon("wrench").tone("accent").key("i"),
                 ui::progress()
-                    .value((b.done + b.failed) as f64 / b.expected as f64)
+                    .value(approx(b.done + b.failed) / approx(b.expected))
                     .label(label)
                     .tone("accent")
                     .grow(1.0)
@@ -498,7 +507,7 @@ fn downloads(state: &State) -> Option<Node> {
             .children(nodes![
                 ui::icon("download").tone("info").key("i"),
                 ui::progress()
-                    .value(done as f64 / total as f64)
+                    .value(approx(done) / approx(total))
                     .label(label)
                     .tone("info")
                     .grow(1.0)
@@ -603,7 +612,7 @@ fn errors(state: &State) -> Vec<Node> {
                 ]),
         ];
         if !tail.is_empty() {
-            let text: String = tail.iter().map(|l| format!("{l}\x1b[0m\r\n")).collect();
+            let text = ansi_text(&tail);
             body.push(
                 ui::ansi(text)
                     .follow(true)
@@ -634,8 +643,8 @@ fn errors(state: &State) -> Vec<Node> {
     out
 }
 
-/// `text` with quoted code as code spans: Markdown's `x` and the GNU-style
-/// `x' that NixOS option warnings use.
+/// `text` with quoted code as code spans: Markdown's `` `x` `` and the
+/// GNU-style `` `x' `` that NixOS option warnings use.
 fn code_spans(text: &str) -> Vec<ui::Span> {
     let mut spans = Vec::new();
     let mut rest = text;
@@ -765,11 +774,7 @@ fn fetched(state: &State) -> Option<Node> {
 fn output(state: &State) -> Option<Node> {
     let lines = state.logs.get("").filter(|l| !l.is_empty())?;
     let skip = lines.len().saturating_sub(LOG_TAIL);
-    let text: String = lines
-        .iter()
-        .skip(skip)
-        .map(|l| format!("{l}\x1b[0m\r\n"))
-        .collect();
+    let text = ansi_text(lines.iter().skip(skip));
     Some(
         ui::section()
             .head("Output")
@@ -848,7 +853,7 @@ fn fetch_inputs(state: &State) -> Option<Node> {
             } else if input.expected > 0 {
                 row.push(
                     ui::progress()
-                        .value(input.bytes as f64 / input.expected as f64)
+                        .value(approx(input.bytes) / approx(input.expected))
                         .label(format!("{} / {}", size(input.bytes), size(input.expected)))
                         .tone("info")
                         .grow(1.0)

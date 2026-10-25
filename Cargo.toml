@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/*"]
 resolver = "3"
+members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
@@ -12,6 +12,90 @@ libc = "0.2.191"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tern-sdk = "0.1.0"
+
+[workspace.lints.clippy]
+# ──────────────────────────────────────────────────────────────────────────────
+# Base Lint Levels
+# ──────────────────────────────────────────────────────────────────────────────
+all = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Meta: Lint Attributes
+# ──────────────────────────────────────────────────────────────────────────────
+allow_attributes_without_reason = "warn"  # Enforce reason for all #[allow]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Safety & Unsafe Code
+# ──────────────────────────────────────────────────────────────────────────────
+undocumented_unsafe_blocks = "warn"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Numeric Casts & Conversions
+# ──────────────────────────────────────────────────────────────────────────────
+cast_lossless = "allow"  # u32 as u64 - 'as' is cleaner than From
+tuple_array_conversions = "allow"  # Non-Into conversion is more clear
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Functions & Closures
+# ──────────────────────────────────────────────────────────────────────────────
+inline_always = "allow"  # Needed for performance-critical code
+must_use_candidate = "allow"  # Not every function needs #[must_use]
+redundant_closure_for_method_calls = "allow"  # .map(ToString::to_string) can be clearer
+return_self_not_must_use = "allow"  # Builder pattern methods
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Structs & Types
+# ──────────────────────────────────────────────────────────────────────────────
+missing_fields_in_debug = "allow"  # Not every field needs to be in Debug output
+struct_excessive_bools = "allow"  # Usually with builders
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pattern Matching
+# ──────────────────────────────────────────────────────────────────────────────
+match_same_arms = "allow"  # Can be intentional for clarity
+match_wildcard_for_single_variants = "allow"  # _ can be clearer than listing variants
+option_if_let_else = "allow"  # match/if-let-else often clearer
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Imports & Module Organization
+# ──────────────────────────────────────────────────────────────────────────────
+enum_glob_use = "allow"
+items_after_statements = "allow"  # Sometimes more readable
+wildcard_imports = "allow"  # Cleaner for preludes and test modules
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Variables & Type Inference
+# ──────────────────────────────────────────────────────────────────────────────
+let_underscore_untyped = "allow"  # Type obvious from context
+similar_names = "allow"  # 'req' and 'res' together are fine
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Literals & Formatting
+# ──────────────────────────────────────────────────────────────────────────────
+unreadable_literal = "allow"  # 10_000_000 vs 0xDEADBEEF is context dependent
+verbose_bit_mask = "allow"  # Explicit bit patterns can be clearer than hex
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Code Style
+# ──────────────────────────────────────────────────────────────────────────────
+default_trait_access = "allow"  # Default::default() sometimes clearer
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Complexity
+# ──────────────────────────────────────────────────────────────────────────────
+too_many_arguments = "allow"  # Argument count is rarely the real complexity signal
+too_many_lines = "allow"  # Arbitrary limits don't account for necessary complexity
+
+[workspace.lints.rust]
+missing_docs = "warn"  # Every public symbol documented
+unsafe_code = "deny"
+warnings = "deny"
 
 [profile.release]
 lto = true

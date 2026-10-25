@@ -25,11 +25,12 @@ The plugin's README says what to replace with it.
 
 The crates form one Cargo workspace with one `Cargo.lock`.
 Dependencies that more than one crate uses go in `[workspace.dependencies]` in the root `Cargo.toml`, and each crate takes them with `name.workspace = true`.
+Lints are set once in `[workspace.lints]`: Clippy's pedantic and nursery groups, every warning an error, and no `unsafe` without an `#[allow(unsafe_code, reason = "…")]` and a `// SAFETY:` comment. Each crate opts in with `[lints] workspace = true`.
 
 ```sh
 nix develop
 cargo nextest run
-cargo clippy --all-targets
+cargo clippy-strict
 nix fmt
 ```
 

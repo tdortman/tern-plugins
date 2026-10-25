@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    path::Path,
     time::{Duration, Instant},
 };
 
@@ -138,7 +139,7 @@ impl Counts {
     }
 
     /// Field-wise sum.
-    fn add(self, other: Self) -> Self {
+    const fn add(self, other: Self) -> Self {
         Self {
             done: self.done + other.done,
             expected: self.expected + other.expected,
@@ -186,7 +187,7 @@ pub struct DepNode<'a> {
     /// Its `.drv` path.
     pub drv: &'a str,
     /// Its planned inputs (each derivation appears once in the whole tree).
-    pub children: Vec<DepNode<'a>>,
+    pub children: Vec<Self>,
 }
 
 /// Everything known about the invocation so far.
@@ -489,7 +490,7 @@ impl State {
                 self.saw_plan = true;
             } else if line.starts_with('/')
                 && self.listing == Listing::Builds
-                && line.ends_with(".drv")
+                && Path::new(line).extension().is_some_and(|e| e == "drv")
             {
                 self.plan(line);
             } else if line.starts_with('/') && self.listing == Listing::Fetches {

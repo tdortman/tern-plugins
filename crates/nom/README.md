@@ -105,6 +105,7 @@ From the repository root:
 ```sh
 nix develop
 cargo nextest run -p tern-nom
+cargo clippy-strict
 nix fmt
 ```
 

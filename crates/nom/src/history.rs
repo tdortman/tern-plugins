@@ -5,9 +5,9 @@
 
 use std::{
     collections::BTreeMap,
+    fmt::Write as _,
     fs::{self, File},
     io,
-    os::fd::AsRawFd as _,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -59,7 +59,7 @@ impl History {
         match secs.len() {
             0 => None,
             n if n % 2 == 1 => Some(secs[mid]),
-            _ => Some((secs[mid - 1] + secs[mid]) / 2),
+            _ => Some(u64::midpoint(secs[mid - 1], secs[mid])),
         }
     }
 
@@ -77,10 +77,8 @@ impl History {
         }
         fs::create_dir_all(dir)?;
         let lock = File::create(dir.join("build-reports.csv.lock"))?;
-        // SAFETY: a valid descriptor; the lock is released when `lock` closes.
-        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
+        // `flock` on Unix, as nom takes it; released when `lock` closes.
+        lock.lock()?;
         let path = dir.join("build-reports.csv");
         // Re-read under the lock: nom may have written since `load`.
         let mut runs = fs::read_to_string(&path)
@@ -155,11 +153,7 @@ fn render(runs: &Runs) -> String {
     let mut out = format!("{HEADER}\r\n");
     for ((host, name), times) in runs {
         for (time, secs) in times {
-            out.push_str(&format!(
-                "{},{},{time},{secs}\r\n",
-                quote(host),
-                quote(name)
-            ));
+            let _ = write!(out, "{},{},{time},{secs}\r\n", quote(host), quote(name));
         }
     }
     out
@@ -172,7 +166,7 @@ fn utc_now() -> String {
         .map_or(0, |d| d.as_secs());
     let (days, rem) = (secs / 86_400, secs % 86_400);
     // Howard Hinnant's days-to-civil.
-    let z = days as i64 + 719_468;
+    let z = days.cast_signed() + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
