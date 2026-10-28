@@ -83,7 +83,7 @@ The table lists the system's own packages and every added or removed package, ea
 A name longer than 24 characters, or a version list longer than 20, is cut in the middle so that a row fits a half-width pane. In a pane too narrow even for that, the Before column is hidden first, then the status word.
 Dependencies whose version or size changed are listed in a second table below it, open by default and collapsible.
 Under both tables, the path count and closure size before and after, with the size change, close the section, as they close dix's own output.
-A size that grew shows in the warning color and one that shrank in the success color, in both tables and in the totals.
+A size that grew shows in the error color (red) and one that shrank in the success color (green), in both tables and in the totals.
 
 ## Which commands draw a card
 

@@ -1044,7 +1044,7 @@ fn lock_changes(state: &State) -> Option<Node> {
     )
 }
 
-/// `bytes` with a sign, as dix prints size changes: growth in the warning
+/// `bytes` with a sign, as dix prints size changes: growth in the error
 /// color, shrinkage in the success color, and a change too small to show
 /// (under half a KiB, which `size` rounds to 0 KiB) muted.
 fn size_delta(bytes: i64) -> ui::Span {
@@ -1052,9 +1052,9 @@ fn size_delta(bytes: i64) -> ui::Span {
     let tone = match bytes {
         -511..=511 => "muted",
         ..-511 => "success",
-        _ => "warning",
+        _ => "error",
     };
-    ui::span(format!("{sign}{}", size(bytes.unsigned_abs()))).style(format!("num {tone}"))
+    ui::span(format!("{sign}{}", size(bytes.unsigned_abs()))).style(format!("mono {tone}"))
 }
 
 /// How many leading bytes `a` and `b` share, ending after a `.`, `-` or `_`
@@ -1269,12 +1269,12 @@ mod tests {
     #[test]
     fn colours_size_changes_by_direction() {
         let tone = |bytes| size_delta(bytes).s.unwrap_or_default();
-        assert_eq!(tone(2_800_000), "num warning");
-        assert_eq!(tone(-274_000), "num success");
+        assert_eq!(tone(2_800_000), "mono error");
+        assert_eq!(tone(-274_000), "mono success");
         // Rounds to "+0 KiB" / "−0 KiB": no direction worth a colour.
-        assert_eq!(tone(511), "num muted");
-        assert_eq!(tone(-511), "num muted");
-        assert_eq!(tone(-512), "num success");
+        assert_eq!(tone(511), "mono muted");
+        assert_eq!(tone(-511), "mono muted");
+        assert_eq!(tone(-512), "mono success");
     }
 
     #[test]
