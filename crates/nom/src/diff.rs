@@ -121,18 +121,24 @@ impl Target {
             return None;
         }
         let dix = std::env::var_os("TERN_NOM_DIX")?;
-        let out = Command::new(dix)
-            .args(["--color", "never", "--output", "json"])
-            .arg(fs::canonicalize(&self.old).ok()?)
-            .arg(fs::canonicalize(&self.out_link).ok()?)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        serde_json::from_slice(&out.stdout).ok()
+        let (old, new) = (
+            fs::canonicalize(&self.old).ok()?,
+            fs::canonicalize(&self.out_link).ok()?,
+        );
+        // dix 3 diffs under a `diff` subcommand; dix 2 takes the paths alone.
+        let stdout = [&["diff"][..], &[]].into_iter().find_map(|sub| {
+            let out = Command::new(&dix)
+                .args(["--color", "never"])
+                .args(sub)
+                .args(["--output", "json"])
+                .args([&old, &new])
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            out.status.success().then_some(out.stdout)
+        })?;
+        serde_json::from_slice(&stdout).ok()
     }
 }
 

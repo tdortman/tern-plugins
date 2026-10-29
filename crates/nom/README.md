@@ -77,7 +77,7 @@ In a Tern pane it also adds `--diff never` to `nh os|home|darwin <command>`, bec
 Outside Tern, under a multiplexer, or when you pass `--diff` yourself, nh prints its own diff as usual.
 
 Under `nh os`, `nh home` and `nh darwin`, the card shows what the build changes against the running system or home-manager profile once the build ends.
-tern-nom runs [dix](https://github.com/faukah/dix), the tool nh uses for its own diff, with `--output json`.
+tern-nom runs [dix](https://github.com/faukah/dix), the tool nh uses for its own diff, as `dix diff --output json` (dix 3) or `dix --output json` (dix 2).
 It finds the new closure through the `--out-link` of the `nix build` that nh runs beside it.
 The table lists the system's own packages and every added or removed package, each with its version before and after, the part that changed highlighted, and its size change.
 A name longer than 24 characters, or a version list longer than 20, is cut in the middle so that a row fits a half-width pane. In a pane too narrow even for that, the Before column is hidden first, then the status word.
