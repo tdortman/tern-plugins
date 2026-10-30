@@ -233,17 +233,20 @@ pub enum Version {
 /// A version and how many store paths have it.
 #[derive(Debug, Deserialize)]
 pub struct Named {
-    name: String,
+    /// `None` for a path without a version, such as a downloaded `.deb`.
+    name: Option<String>,
     #[serde(default)]
     amount: Option<u32>,
 }
 
 impl Named {
-    /// `1.2`, or `1.2 ×3` for several paths of it.
+    /// `1.2`, or `1.2 ×3` for several paths of it; `<none>` without a
+    /// version, as dix prints it.
     fn label(&self, amount: Option<u32>) -> String {
+        let name = self.name.as_deref().unwrap_or("<none>");
         match amount {
-            Some(n) if n > 1 => format!("{} ×{n}", self.name),
-            _ => self.name.clone(),
+            Some(n) if n > 1 => format!("{name} ×{n}"),
+            _ => name.to_owned(),
         }
     }
 }
@@ -278,5 +281,23 @@ mod tests {
         assert!(!abseil.selected());
         assert_eq!(nom.versions(), ("0.6.0".into(), "0.7.0".into()));
         assert!(nom.selected());
+    }
+
+    #[test]
+    fn versionless_packages_read_like_dix() {
+        // A `.deb` source has no version: dix writes `null` and prints `<none>`.
+        let json = r#"{"diffs":[
+            {"name":"chatgpt_26.1027.30824_amd64.deb","versions":[
+                {"kind":"added","version":{"name":null,"amount":1}}],
+             "status":"Added","kind":"version","selection":"Unselected",
+             "has_omitted_versions":false,"size_old":0,"size_new":534538528,
+             "size_delta":534538528}],
+            "paths":{"old":4117,"new":4117,"added":36,"removed":36},
+            "size_old":1,"size_new":2}"#;
+        let closure: Closure = serde_json::from_str(json).expect("dix JSON");
+        assert_eq!(
+            closure.diffs[0].versions(),
+            (String::new(), "<none>".into())
+        );
     }
 }
