@@ -100,14 +100,41 @@ fn size(bytes: u64) -> String {
     }
 }
 
-/// `d` as `1m 05s` / `4.2s`.
-fn took(d: Duration) -> String {
-    let s = d.as_secs();
-    if s >= 60 {
-        format!("{}m {:02}s", s / 60, s % 60)
-    } else {
-        format!("{:.1}s", d.as_secs_f64())
+/// `secs` as Tern's timers read them, without a zero last unit: `42s`,
+/// `1m 5s`, `2m`, `1h 5m`.
+fn clock(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    match (h, m, s) {
+        (0, 0, s) => format!("{s}s"),
+        (0, m, 0) => format!("{m}m"),
+        (0, m, s) => format!("{m}m {s}s"),
+        (h, 0, _) => format!("{h}h"),
+        (h, m, _) => format!("{h}h {m}m"),
     }
+}
+
+/// How long something took, as Tern's timer showed it while it ran:
+/// `42.9s`, `1m 5s`, `1h 15m`.
+fn took(d: Duration) -> String {
+    if d < Duration::from_secs(60) {
+        format!("{:.1}s", d.as_secs_f64())
+    } else {
+        clock(d.as_secs())
+    }
+}
+
+/// An estimate, rounded to what a median of earlier runs can promise:
+/// `~8s`, `~45s`, `~2m 30s`, `~25m`, `~1h 15m`.
+fn about(d: Duration) -> String {
+    let secs = d.as_secs() + u64::from(d.subsec_millis() >= 500);
+    let step = match secs {
+        0..10 => 1,
+        10..60 => 5,
+        60..600 => 30,
+        600..3600 => 60,
+        _ => 300,
+    };
+    format!("~{}", clock(((secs + step / 2) / step * step).max(1)))
 }
 
 /// Milliseconds of `d`, as a node prop.
@@ -327,7 +354,7 @@ fn dep_rows(
             None
         }
         DrvStatus::Waiting if ended => Some("not built".to_owned()),
-        DrvStatus::Waiting => state.estimate(drv, None).map(|e| format!("~{}", took(e))),
+        DrvStatus::Waiting => state.estimate(drv, None).map(about),
         DrvStatus::Built(d) => Some(took(d)),
         DrvStatus::Failed => Some("failed".to_owned()),
     };
@@ -423,27 +450,33 @@ fn building_cells(state: &State, id: u64, row: &mut Vec<Node>) {
             .into(),
     );
     let elapsed = state.started_ago(id);
-    // nom's estimate from earlier builds of the same package.
+    // nom's estimate from earlier builds of the same package, read as one
+    // clock: the bar, then `1m 12s / ~3m`. Past it, how long is left is
+    // unknown, so the bar only moves.
     if let Some(est) = b.estimate {
-        let label = match est.checked_sub(elapsed) {
-            Some(left) => format!("~{} left", took(left)),
-            None => format!("over ~{}", took(est)),
-        };
-        row.push(
-            ui::progress()
-                .value((elapsed.as_secs_f64() / est.as_secs_f64()).min(0.99))
-                .label(label)
-                .tone("accent")
-                .min(Bound::w(Extent::Ch(24.0)))
-                .key("e")
-                .into(),
-        );
+        let mut bar = ui::progress()
+            .tone("accent")
+            .min(Bound::w(Extent::Ch(12.0)))
+            .key("e");
+        if elapsed < est {
+            bar = bar.value(elapsed.as_secs_f64() / est.as_secs_f64());
+        }
+        row.push(bar.into());
     }
     let mut timer = ui::elapsed().age(ms(elapsed));
     if state.outcome.is_some() {
         timer = timer.stopped(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
     }
     row.push(timer.shrink(0.0).key("t").into());
+    if let Some(est) = b.estimate {
+        row.push(
+            ui::text(ui::span(format!("/ {}", about(est))).style("muted"))
+                .wrap("none")
+                .shrink(0.0)
+                .key("est")
+                .into(),
+        );
+    }
 }
 
 /// One row per running copy with its own progress bar.
@@ -1277,6 +1310,26 @@ mod tests {
     use super::*;
 
     const HASH: &str = "8nk26gfn51s07v339n5lycablfkl5lj7";
+
+    #[test]
+    fn rounds_estimates_to_what_they_can_promise() {
+        let about = |ms| about(Duration::from_millis(ms));
+        assert_eq!(about(200), "~1s");
+        assert_eq!(about(7_600), "~8s");
+        assert_eq!(about(43_000), "~45s");
+        assert_eq!(about(58_000), "~1m");
+        assert_eq!(about(134_000), "~2m");
+        assert_eq!(about(150_000), "~2m 30s");
+        assert_eq!(about(1_490_000), "~25m");
+        assert_eq!(about(4_460_000), "~1h 15m");
+        assert_eq!(about(7_300_000), "~2h");
+
+        let took = |ms| took(Duration::from_millis(ms));
+        assert_eq!(took(420), "0.4s");
+        assert_eq!(took(42_900), "42.9s");
+        assert_eq!(took(65_000), "1m 5s");
+        assert_eq!(took(4_500_000), "1h 15m");
+    }
 
     #[test]
     fn colours_size_changes_by_direction() {

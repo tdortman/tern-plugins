@@ -23,9 +23,11 @@ From top to bottom:
   While nix runs, the tree shows only what matters now, as nom does: what you asked for, every running or failed build, and the derivations between them.
   After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation.
   Each row shows whether the derivation is waiting, building, built, or failed, with its time.
+  A waiting row shows how long it usually takes, such as `~2m 30s`, if nom has timed the same package before.
   Every row stays on one line so the tree's guide lines stay joined. A name too long for the row is cut, and hovering over it shows the whole name.
   A running build's row also has its stdenv phase, its last output line, and how long it has run.
-  If nom has timed the same package before, the row also has a progress bar against that estimate.
+  If nom has timed the same package before, the row also has a progress bar and reads `1m 12s / ~3m`: the time so far, then the usual time, rounded.
+  Once a build runs past the usual time, the bar keeps moving without a fill.
   Build logs stay hidden. Click a running or finished build's row to show the last 8 lines of its log under the row, and click again to hide it.
   The button above those lines expands them to the last 30 lines.
 - One row per path being fetched, with its own download bar.
