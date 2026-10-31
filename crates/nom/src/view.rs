@@ -8,7 +8,7 @@ use std::{
 
 use tern_sdk::{
     nodes,
-    ui::{self, Bound, Column, Extent, Status, TableRow},
+    ui::{self, Bound, Column, Extent, Status, TableRow, TextCell},
 };
 
 use crate::{
@@ -1117,6 +1117,17 @@ fn clip(s: &str, max: usize) -> String {
     format!("{start}…{end}")
 }
 
+/// A cell of `text`, which shows `shown`, with `full` as its tooltip when
+/// `clip` cut it.
+fn whole(text: impl Into<ui::Text>, shown: &str, full: &str) -> TextCell {
+    let cell = TextCell::new(text);
+    if shown == full {
+        cell
+    } else {
+        cell.title(full)
+    }
+}
+
 /// Packages as a table: status, name, version before, version after, size.
 /// Where a row still doesn't fit, Before goes first: the status word and
 /// the highlighted part of After still say what changed.
@@ -1147,14 +1158,15 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
             "Mixed" => ("mixed", "warning"),
             _ => ("changed", "muted"),
         };
-        let (old, new) = p.versions();
-        let (old, new) = (clip(&old, VERSION_CH), clip(&new, VERSION_CH));
+        let (full_old, full_new) = p.versions();
+        let (old, new) = (clip(&full_old, VERSION_CH), clip(&full_new, VERSION_CH));
+        let name = clip(&p.name, NAME_CH);
         table = table.row(
             TableRow::new(i.to_string())
                 .cell("s", ui::span(word).style(tone))
-                .cell("n", ui::span(clip(&p.name, NAME_CH)).style("strong"))
-                .cell("o", version_cell(&old, &new, "del"))
-                .cell("w", version_cell(&new, &old, "ins"))
+                .cell("n", whole(ui::span(&name).style("strong"), &name, &p.name))
+                .cell("o", whole(version_cell(&old, &new, "del"), &old, &full_old))
+                .cell("w", whole(version_cell(&new, &old, "ins"), &new, &full_new))
                 .cell("d", size_delta(p.size_delta)),
         );
     }
