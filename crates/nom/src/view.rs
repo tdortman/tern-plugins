@@ -1028,10 +1028,10 @@ fn lock_changes(state: &State) -> Option<Node> {
             Some((_, n)) => *n += 1,
             None => counts.push((c.verb.clone(), 1)),
         }
-        let tone = match c.verb.as_str() {
-            "Added" => "success",
-            "Removed" => "error",
-            _ => "accent",
+        let (icon, tone) = match c.verb.as_str() {
+            "Added" => ("plus", Some("success")),
+            "Removed" => ("minus", Some("error")),
+            _ => ("arrow-up", None),
         };
         // A nested input reads by its own name; the path to it is context.
         let mut name = Vec::new();
@@ -1057,7 +1057,7 @@ fn lock_changes(state: &State) -> Option<Node> {
         };
         table = table.row(
             TableRow::new(i.to_string())
-                .cell("s", ui::span(c.verb.to_lowercase()).style(tone))
+                .cell("s", status_cell(&c.verb.to_lowercase(), icon, tone))
                 .cell("n", name)
                 .cell("src", source_cell)
                 .cell("o", lock_cell(c.from.as_ref(), source, "muted"))
@@ -1150,6 +1150,18 @@ fn clip(s: &str, max: usize) -> String {
     format!("{start}…{end}")
 }
 
+/// A change's status word after an icon of its direction. The icon carries
+/// the meaning, since themes give tones different colours: an update is
+/// the expected change and keeps the plain text colour, which no theme
+/// can make read as an error.
+fn status_cell(word: &str, icon: &str, tone: Option<&str>) -> TextCell {
+    let cell = TextCell::new(ui::span(word).style(tone.unwrap_or_default())).icon(icon);
+    match tone {
+        Some(tone) => cell.tone(tone),
+        None => cell,
+    }
+}
+
 /// A cell of `text`, which shows `shown`, with `full` as its tooltip when
 /// `clip` cut it.
 fn whole(text: impl Into<ui::Text>, shown: &str, full: &str) -> TextCell {
@@ -1183,20 +1195,20 @@ fn package_table(packages: &[&Package], key: &str) -> Node {
         )
         .col(Column::new("d", "Size").align("end").priority(3.0));
     for (i, p) in packages.iter().enumerate() {
-        let (word, tone) = match p.status.as_str() {
-            "Upgraded" => ("upgraded", "accent"),
-            "Downgraded" => ("downgraded", "warning"),
-            "Added" => ("added", "success"),
-            "Removed" => ("removed", "error"),
-            "Mixed" => ("mixed", "warning"),
-            _ => ("changed", "muted"),
+        let (word, icon, tone) = match p.status.as_str() {
+            "Upgraded" => ("upgraded", "arrow-up", None),
+            "Downgraded" => ("downgraded", "arrow-down", Some("warning")),
+            "Added" => ("added", "plus", Some("success")),
+            "Removed" => ("removed", "minus", Some("error")),
+            "Mixed" => ("mixed", "arrow-right", Some("warning")),
+            _ => ("changed", "arrow-right", Some("muted")),
         };
         let (full_old, full_new) = p.versions();
         let (old, new) = (clip(&full_old, VERSION_CH), clip(&full_new, VERSION_CH));
         let name = clip(&p.name, NAME_CH);
         table = table.row(
             TableRow::new(i.to_string())
-                .cell("s", ui::span(word).style(tone))
+                .cell("s", status_cell(word, icon, tone))
                 .cell("n", whole(ui::span(&name).style("strong"), &name, &p.name))
                 .cell("o", whole(version_cell(&old, &new, "del"), &old, &full_old))
                 .cell("w", whole(version_cell(&new, &old, "ins"), &new, &full_new))

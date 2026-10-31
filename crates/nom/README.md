@@ -82,6 +82,8 @@ Under `nh os`, `nh home` and `nh darwin`, the card shows what the build changes 
 tern-nom runs [dix](https://github.com/faukah/dix), the tool nh uses for its own diff, as `dix diff --output json` (dix 3) or `dix --output json` (dix 2).
 It finds the new closure through the `--out-link` of the `nix build` that nh runs beside it.
 The table lists the system's own packages and every added or removed package, each with its version before and after, the part that changed highlighted, and its size change.
+Each row starts with an arrow or sign for the change: ↑ upgraded, ↓ downgraded, + added, − removed.
+The sign carries the meaning in any theme. An upgrade keeps the plain text color, because some themes make their accent color red. The lock file table marks its inputs the same way.
 A name longer than 24 characters, or a version list longer than 20, is cut in the middle so that a row fits a half-width pane, and hovering over the cut cell shows all of it. In a pane too narrow even for that, the Before column is hidden first, then the status word.
 Dependencies whose version or size changed are listed in a second table below it, open by default and collapsible.
 Under both tables, the path count and closure size before and after, with the size change, close the section, as they close dix's own output.
