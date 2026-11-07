@@ -21,7 +21,8 @@ From top to bottom:
 - Output nix prints outside any build, in a folded section.
 - The derivations nix builds, as a tree from what you asked for down to its inputs, in a fixed order.
   While nix runs, the tree shows only what matters now, as nom does: what you asked for, every running or failed build, and the derivations between them.
-  After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation.
+  When you ask for more than eight derivations at once, as a check suite does, those with nothing running or failed under them fold into one `+N more` line.
+  After a run that fails or is cancelled, it keeps showing the failed and interrupted builds that way. After a run that succeeds, it folds, and opens to every derivation, twenty rows at a time, scrolling through the rest.
   Each row shows whether the derivation is waiting, building, built, or failed, with its time.
   A waiting row shows how long it usually takes, such as `~2m 30s`, if nom has timed the same package before.
   Every row stays on one line so the tree's guide lines stay joined. A name too long for the row is cut, and hovering over it shows the whole name.

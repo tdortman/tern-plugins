@@ -50,7 +50,8 @@ fn log_href(state: &State, drv: &str) -> Option<String> {
 pub type Node = ui::Node<Msg>;
 type View = ui::View<Msg>;
 
-/// Running copies listed before the rest fold into "+N more".
+/// Running copies listed before the rest fold into "+N more". Also the most
+/// derivations asked for that all show; past it, only active ones do.
 const ROWS: usize = 8;
 
 /// How long a build or copy runs before it gets a row.
@@ -65,6 +66,10 @@ const INPUT_ROWS: usize = 4;
 
 /// Fetched paths shown at once; the list scrolls through the rest.
 const FETCHED_ROWS: u32 = 8;
+
+/// Rows of the whole derivation tree shown at once after a run succeeds;
+/// it scrolls through the rest.
+const TREE_ROWS: f64 = 20.0;
 
 /// Lines of a clicked build's log shown before "N more lines" expands it.
 const PREVIEW: u32 = 8;
@@ -789,33 +794,53 @@ fn warnings(state: &State) -> Option<Node> {
 
 /// What nix builds, as a tree from what was asked for down to its inputs.
 /// Until a run succeeds, only what matters now shows under the roots:
-/// running and failed builds and the derivations that need them.
+/// running and failed builds and the derivations that need them. Past
+/// `ROWS` roots, as a check suite has, idle ones fold into "+N more" too.
+/// After a run that succeeds, the whole tree scrolls under a capped height.
 fn deps(state: &State, open: Option<&str>) -> Option<Node> {
     let roots = state.dependency_tree();
     if roots.is_empty() {
         return None;
     }
     let succeeded = matches!(state.outcome, Some((Outcome::Done, _)));
-    let keep = (!succeeded).then(|| {
-        let mut keep = HashSet::new();
-        for root in &roots {
-            mark_active(state, root, &mut keep);
-        }
-        keep
-    });
-    let mut rows = Vec::new();
+    let mut keep = HashSet::new();
+    let mut shown = Vec::new();
     for root in &roots {
-        dep_rows(state, root, ("", ""), open, keep.as_ref(), &mut rows);
+        if succeeded || mark_active(state, root, &mut keep) || roots.len() <= ROWS {
+            shown.push(root);
+        }
+    }
+    let keep = (!succeeded).then_some(&keep);
+    let mut rows = Vec::new();
+    for root in &shown {
+        dep_rows(state, root, ("", ""), open, keep, &mut rows);
+    }
+    let hidden = roots.len() - shown.len();
+    if hidden > 0 {
+        rows.push(
+            ui::text(ui::span(format!("+{hidden} more")).style("muted"))
+                .key("more")
+                .into(),
+        );
     }
     let built = state.built.iter().filter(|b| !b.failed).count();
     let head = format!("Derivations · {built}/{} built", state.planned.len());
+    let tree: Node = if succeeded {
+        ui::scroll()
+            .max(Bound::h(Extent::Lines(TREE_ROWS)))
+            .key("t")
+            .children(rows)
+            .into()
+    } else {
+        ui::col().key("t").children(rows).into()
+    };
     Some(
         ui::section()
             .head(head)
             .collapsible(true)
             .collapsed(succeeded)
             .key("deps")
-            .child(ui::col().key("t").children(rows))
+            .child(tree)
             .into(),
     )
 }
@@ -1444,6 +1469,33 @@ mod tests {
                 "     └─  b-18439",
             ]
         );
+    }
+
+    #[test]
+    fn folds_idle_roots_past_rows() {
+        use crate::state::tests::{SUCCESS, feed};
+        // A check suite: `top` and nine more derivations asked for, `c`
+        // building under `top` while the nine wait.
+        let upto = SUCCESS
+            .lines()
+            .position(|l| l.contains(r#""text":"building '"#) && l.contains("-c-"))
+            .expect("c builds");
+        let mut log: Vec<String> = SUCCESS.lines().take(upto + 1).map(str::to_owned).collect();
+        let plan = log.iter().position(|l| l.contains("-top-")).expect("top");
+        for i in 0..9 {
+            log.insert(
+                plan + 1,
+                format!(
+                    r#"@nix {{"action":"msg","level":3,"msg":"  /nix/store/{}b{i}-check{i}-18439.drv"}}"#,
+                    "a".repeat(30)
+                ),
+            );
+        }
+        let rows = tree_rows(&feed(&log.join("\n")));
+        assert_eq!(rows.len(), 3, "{rows:#?}");
+        assert_eq!(rows[0], "  top-18439");
+        assert!(rows[1].starts_with("  └─  ... c-18439"), "{rows:#?}");
+        assert_eq!(rows[2], "  +9 more");
     }
 
     #[test]
