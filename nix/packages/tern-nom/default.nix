@@ -22,9 +22,8 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = "${src}/Cargo.lock";
 
-  # Installed as `nom` so it drops in for nix-output-monitor, also under nh's
-  # `nh.override { nix-output-monitor = tern-nom; }`. Everything it doesn't
-  # draw itself goes to the real nom.
+  # Installed as `nom` so it drops in for nix-output-monitor. Everything it
+  # doesn't draw itself goes to the real nom.
   postInstall = ''
     mv $out/bin/tern-nom $out/bin/nom
     wrapProgram $out/bin/nom \

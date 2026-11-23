@@ -36,13 +36,14 @@ pub fn program(args: &[String]) -> Option<&str> {
 pub struct Target {
     /// The profile running now.
     old: PathBuf,
-    /// The `--out-link` of the build nh pipes into this process.
+    /// The `--out-link` of the build nh runs this process for.
     out_link: PathBuf,
 }
 
 /// When this process's parent is `nh os|home|darwin …`: its current profile,
-/// and the out-link of the `nix build` beside this process.
-pub fn target(parent: u32) -> Option<Target> {
+/// and the out-link among the arguments of the `nix build` it runs this
+/// process as.
+pub fn target(parent: u32, build: &[String]) -> Option<Target> {
     let args = cmdline(parent)?;
     if program(&args)? != "nh" {
         return None;
@@ -52,9 +53,13 @@ pub fn target(parent: u32) -> Option<Target> {
         "home" => home_profile()?,
         _ => return None,
     };
+    let link = build
+        .iter()
+        .position(|a| a == "--out-link" || a == "-o")
+        .and_then(|i| build.get(i + 1))?;
     Some(Target {
         old,
-        out_link: sibling_out_link(parent)?,
+        out_link: std::env::current_dir().ok()?.join(link),
     })
 }
 
@@ -73,43 +78,6 @@ fn home_profile() -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|p| p.exists())
-}
-
-/// The `--out-link` of the `nix build` that `parent` runs beside this
-/// process, made absolute against that process's directory.
-fn sibling_out_link(parent: u32) -> Option<PathBuf> {
-    for entry in fs::read_dir("/proc").ok()? {
-        let Some(pid) = entry
-            .ok()
-            .and_then(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        // `comm` may hold spaces and parentheses, so fields count from the
-        // last `)`: state, then the parent's pid.
-        let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
-            continue;
-        };
-        let ppid = stat
-            .rsplit_once(')')
-            .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok());
-        if ppid != Some(parent) {
-            continue;
-        }
-        let Some(args) = cmdline(pid) else {
-            continue;
-        };
-        if program(&args) != Some("nix") {
-            continue;
-        }
-        let link = args
-            .iter()
-            .position(|a| a == "--out-link" || a == "-o")
-            .and_then(|i| args.get(i + 1))?;
-        let cwd = fs::read_link(format!("/proc/{pid}/cwd")).ok()?;
-        return Some(cwd.join(link));
-    }
-    None
 }
 
 impl Target {

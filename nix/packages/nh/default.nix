@@ -8,22 +8,26 @@
   ...
 }:
 let
-  real = nh.override { nix-output-monitor = tern-nom; };
-  tern-nom = inputs.self.packages.${stdenv.hostPlatform.system}.tern-nom;
+  nom = lib.getExe' inputs.self.packages.${stdenv.hostPlatform.system}.tern-nom "nom";
 in
-# nh using tern-nom, without nh's own text diff where the card draws it.
+# Older nh pipes nix into the `nom` on its PATH instead of monitoring builds itself.
+assert lib.assertMsg (lib.versionAtLeast nh.version "4.5")
+  "nh-tern needs nh 4.5 or newer, not ${nh.version}";
+# nh whose build and package diff tern-nom draws in a Tern pane.
 symlinkJoin {
   nativeBuildInputs = [ makeBinaryWrapper ];
 
+  # nh runs the `nix` in libexec/tern-nom, which `nom --nh` puts first on its PATH.
   postBuild = ''
     rm $out/bin/nh
-    makeWrapper ${lib.getExe' tern-nom "nom"} $out/bin/nh --add-flags "--nh ${lib.getExe real}"
+    makeWrapper ${nom} $out/libexec/tern-nom/nix --add-flags "--nix $out/libexec/tern-nom"
+    makeWrapper ${nom} $out/bin/nh --add-flags "--nh ${lib.getExe nh} $out/libexec/tern-nom"
   '';
 
-  name = "nh-tern-${real.version}";
-  paths = [ real ];
+  name = "nh-tern-${nh.version}";
+  paths = [ nh ];
 
-  meta = real.meta // {
+  meta = nh.meta // {
     mainProgram = "nh";
   };
 }

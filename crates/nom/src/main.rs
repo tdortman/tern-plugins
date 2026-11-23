@@ -1,8 +1,9 @@
 //! `nom`, drawn natively when it runs in a Tern pane.
 //!
-//! `nom build|copy|flake …` and `nom --json` (how `nh` pipes nix into it)
-//! become a live Tern card; everything else, and every run outside Tern,
-//! is handed to the real nix-output-monitor named by `TERN_NOM_REAL`.
+//! `nom build|copy|flake …`, `nom --json` (how direnv pipes nix into it)
+//! and the `nix build` of an `nh` run through `nom --nh` become a live Tern
+//! card; everything else, and every run outside Tern, is handed to the real
+//! nix-output-monitor named by `TERN_NOM_REAL`.
 
 mod diff;
 mod drv;
@@ -15,6 +16,7 @@ mod tty;
 mod view;
 
 use std::{
+    ffi::OsString,
     io::{self, BufRead as _, BufReader, Read, Write as _},
     os::unix::process::{CommandExt as _, ExitStatusExt as _},
     path::Path,
@@ -52,8 +54,14 @@ extern "C" fn on_signal(_: libc::c_int) {
 
 /// Where nix's log comes from.
 enum Source {
-    /// `nix <args>` run by this process.
-    Spawn(Vec<String>),
+    /// `nix <args>` run by this process. Under nh, which runs this process
+    /// as its `nix`, `nh` is the `PATH` the real nix is on.
+    Spawn {
+        /// What follows `nix`.
+        args: Vec<String>,
+        /// The `PATH` without this process's own `nix`.
+        nh: Option<OsString>,
+    },
     /// A pipe on stdin (`nom --json`).
     Stdin,
 }
@@ -97,11 +105,12 @@ fn connect() -> Option<Session<Msg>> {
     Session::with_terminal(tty, options).ok().flatten()
 }
 
-/// `nom --nh <nh> <args>`, installed as `nh`: runs nh, and in a Tern pane
-/// adds `--diff never` to `nh os|home|darwin <verb>`, whose package diff
-/// the card draws.
+/// `nom --nh <nh> <dir> <args>`, installed as `nh`: runs nh, and in a Tern
+/// pane lets the card draw its build and package diff. `<dir>`, which holds
+/// `nom --nix` as `nix`, goes first on nh's `PATH`, nh's own build monitor
+/// is turned off, and `nh os|home|darwin <verb>` gets `--diff never`.
 #[allow(unsafe_code, reason = "signal handling, subreaper and reaping for nh")]
-fn nh(real: &str, args: &[String]) -> ExitCode {
+fn nh(real: &str, dir: &str, args: &[String]) -> ExitCode {
     if !in_tern_pane() {
         let err = Command::new(real).arg0("nh").args(args).exec();
         eprintln!("tern-nom: cannot run nh: {err}");
@@ -123,19 +132,30 @@ fn nh(real: &str, args: &[String]) -> ExitCode {
             args.splice(i + 2..i + 2, ["--diff".to_owned(), "never".to_owned()]);
         }
     }
-    // Ctrl+C kills nh at once while its nom still restores the terminal.
-    // Were nh this process, the shell would take the terminal back in nom's
-    // raw mode and keep it (no Enter for sudo), and nom's restore would
-    // fail with EIO. So nh runs as a child, and nom and nix, handed to this
-    // process as subreaper when nh dies, are waited for first. A handler,
-    // not SIG_IGN, so nh still gets Ctrl+C.
+    let mut path = OsString::from(dir);
+    if let Some(rest) = std::env::var_os("PATH") {
+        path.push(":");
+        path.push(rest);
+    }
+    // Ctrl+C kills nh at once while the nom it runs as `nix` still restores
+    // the terminal. Were nh this process, the shell would take the terminal
+    // back in nom's raw mode and keep it (no Enter for sudo), and nom's
+    // restore would fail with EIO. So nh runs as a child, and nom and nix,
+    // handed to this process as subreaper when nh dies, are waited for
+    // first. A handler, not SIG_IGN, so nh still gets Ctrl+C.
     // SAFETY: the handler only stores to an atomic; PR_SET_CHILD_SUBREAPER
     // takes a flag and has no other preconditions.
     unsafe {
         libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
         libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1);
     }
-    let status = match Command::new(real).arg0("nh").args(&args).status() {
+    let nh = Command::new(real)
+        .arg0("nh")
+        .args(&args)
+        .env("PATH", path)
+        .env("NH_ROM", "0")
+        .status();
+    let status = match nh {
         Ok(s) => s,
         Err(err) => {
             eprintln!("tern-nom: cannot run nh: {err}");
@@ -165,9 +185,35 @@ fn nh(real: &str, args: &[String]) -> ExitCode {
     )
 }
 
+/// `nom --nix <dir> <args>`, installed as `<dir>/nix`, which `--nh` puts
+/// first on nh's `PATH`: the `nix build` nh itself runs draws a card, and
+/// every other call becomes the nix that comes next on `PATH`.
+fn nix(dir: &str, args: &[String]) -> ExitCode {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(std::env::split_paths(&path).filter(|p| p != Path::new(dir)))
+        .unwrap_or(path);
+    let by_nh = diff::cmdline(std::os::unix::process::parent_id())
+        .is_some_and(|parent| diff::program(&parent) == Some("nh"));
+    if by_nh
+        && args.first().is_some_and(|sub| sub == "build")
+        && !args.iter().any(|a| a == "--help")
+        && let Some(session) = connect()
+    {
+        let title = parent_command().unwrap_or_else(|| "nh".to_owned());
+        let source = Source::Spawn {
+            args: args.to_vec(),
+            nh: Some(path),
+        };
+        return run(session, source, &title);
+    }
+    let err = Command::new("nix").env("PATH", path).args(args).exec();
+    eprintln!("tern-nom: cannot run nix: {err}");
+    ExitCode::FAILURE
+}
+
 /// The command line of this process's parent (`nh os switch`), for the
-/// card's title under a pipe; direnv's long stdlib call reads as
-/// `direnv ~/project`.
+/// card's title when another program started nix; direnv's long stdlib
+/// call reads as `direnv ~/project`.
 fn parent_command() -> Option<String> {
     let args = diff::cmdline(std::os::unix::process::parent_id())?;
     if let Some(envrc) = args.iter().find_map(|a| a.split_once("source_env ")) {
@@ -244,22 +290,25 @@ fn monitor(
     source: Source,
     title: &str,
 ) -> Result<ExitCode, tern_sdk::Error> {
-    // A pipe (direnv, nh) shows a card once nix does something worth one, so
-    // a cached reload stays quiet; a typed command shows one at once.
-    let eager = matches!(source, Source::Spawn(_));
+    // A pipe (direnv) or nh shows a card once nix does something worth one,
+    // so a cached reload stays quiet; a typed command shows one at once.
+    let eager = matches!(source, Source::Spawn { nh: None, .. });
     let (tx, rx) = mpsc::channel();
     let mut child = None;
     let mut stdout = None;
-    // Under `nh os|home|darwin`, what it compares once the build ends; read
-    // now, while nh's `nix build` still runs.
+    // Under `nh os|home|darwin`, what it compares once the build ends.
     let mut compare = None;
     let started = SystemTime::now();
     // `nix flake metadata`/`show` for a terminal: the card draws their JSON
     // instead of nix's text, which a pipe still gets.
     let mut drawn: Option<String> = None;
     match source {
-        Source::Spawn(args) => {
+        Source::Spawn { args, nh } => {
             let mut cmd = Command::new("nix");
+            if let Some(path) = nh {
+                cmd.env("PATH", path);
+                compare = diff::target(std::os::unix::process::parent_id(), &args);
+            }
             let (sub, rest) = args.split_first().expect("a subcommand");
             cmd.arg(sub)
                 .args(["-v", "--log-format", "internal-json"])
@@ -294,10 +343,7 @@ fn monitor(
             }));
             child = Some(spawned);
         }
-        Source::Stdin => {
-            compare = diff::target(std::os::unix::process::parent_id());
-            pump_lines(io::stdin(), tx);
-        }
+        Source::Stdin => pump_lines(io::stdin(), tx),
     }
 
     let mut sf: Option<Surface> = None;
@@ -452,18 +498,43 @@ fn build_only(args: &[String]) -> Vec<String> {
     out
 }
 
-#[allow(unsafe_code, reason = "installing and resetting signal handlers")]
+/// Monitors `source` on `session` until nix ends or a signal stops it; the
+/// process's exit code.
+#[allow(unsafe_code, reason = "installing signal handlers")]
+fn run(session: Session<Msg>, source: Source, title: &str) -> ExitCode {
+    // SAFETY: the handler only stores to an atomic.
+    unsafe {
+        libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
+    }
+    match monitor(session, source, title) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("tern-nom: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[allow(unsafe_code, reason = "resetting signal handlers")]
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let help = args.iter().any(|a| a == "--help");
     // `nom develop`/`nom shell` build in a card, then run nix for real.
     let mut then = None;
     let source = match args.first().map(String::as_str) {
-        Some("--nh") if args.len() >= 2 => return nh(&args[1], &args[2..]),
-        Some("build" | "copy" | "flake") if !help => Source::Spawn(args.clone()),
+        Some("--nh") if args.len() >= 3 => return nh(&args[1], &args[2], &args[3..]),
+        Some("--nix") if args.len() >= 2 => return nix(&args[1], &args[2..]),
+        Some("build" | "copy" | "flake") if !help => Source::Spawn {
+            args: args.clone(),
+            nh: None,
+        },
         Some("develop" | "shell") if !help => {
             then = Some(args.clone());
-            Source::Spawn(build_only(&args))
+            Source::Spawn {
+                args: build_only(&args),
+                nh: None,
+            }
         }
         Some("--json") if args.len() == 1 => Source::Stdin,
         _ => return real_nom(&args),
@@ -471,22 +542,11 @@ fn main() -> ExitCode {
     let Some(session) = connect() else {
         return real_nom(&args);
     };
-    // SAFETY: the handler only stores to an atomic.
-    unsafe {
-        libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
-    }
     let title = match &source {
-        Source::Spawn(_) => format!("nom {}", args.join(" ")),
+        Source::Spawn { .. } => format!("nom {}", args.join(" ")),
         Source::Stdin => parent_command().unwrap_or_else(|| "nix".to_owned()),
     };
-    let code = match monitor(session, source, &title) {
-        Ok(code) => code,
-        Err(e) => {
-            eprintln!("tern-nom: {e}");
-            ExitCode::FAILURE
-        }
-    };
+    let code = run(session, source, &title);
     match then {
         Some(nix_args) if code == ExitCode::SUCCESS => {
             // SAFETY: restoring the default action has no preconditions.

@@ -1,7 +1,7 @@
 # tern-nom
 
 [nix-output-monitor](https://github.com/maralorn/nix-output-monitor) (`nom`) for the [Tern](https://stencil.so/tern) terminal.
-In a Tern pane, `nom build` and anything that pipes into `nom --json`, such as `nh os switch`, show a native card instead of nom's text table.
+In a Tern pane, `nom build`, anything that pipes into `nom --json`, and the flake's `nh` show a native card instead of nom's text table.
 The card shows the dependency tree, running builds with estimated progress, downloads, errors, and the build log.
 Everywhere else it runs the real `nom`, so nothing changes outside Tern.
 
@@ -69,19 +69,20 @@ inputs.tern-plugins = {
 
 Put `inputs.tern-plugins.packages.${system}.tern-nom` in your packages instead of `nix-output-monitor`.
 
-nh puts its own copy of nom on its `PATH`. To make nh use tern-nom, use the flake's `nh` package, for example as `programs.nh.package`:
+nh 4.5 and newer draws build progress itself and no longer runs `nom`. To get the card under nh, use the flake's `nh` package, for example as `programs.nh.package`:
 
 ```nix
 programs.nh.package = inputs.tern-plugins.packages.${system}.nh;
 ```
 
-It is nixpkgs' nh with tern-nom as its nom.
-In a Tern pane it also adds `--diff never` to `nh os|home|darwin <command>`, because the card shows the diff.
-Outside Tern, under a multiplexer, or when you pass `--diff` yourself, nh prints its own diff as usual.
+It is nixpkgs' nh, which must be 4.5 or newer.
+In a Tern pane the package puts tern-nom first on nh's `PATH` as `nix`, so the `nix build` that nh runs draws the card.
+It also sets `NH_ROM=0`, which turns off nh's own progress display, and adds `--diff never` to `nh os|home|darwin <command>`, because the card shows the diff.
+Outside Tern and under a multiplexer, nh runs unchanged. When you pass `--diff` yourself, nh prints its own diff as usual.
 
 Under `nh os`, `nh home` and `nh darwin`, the card shows what the build changes against the running system or home-manager profile once the build ends.
 tern-nom runs [dix](https://github.com/faukah/dix), the tool nh uses for its own diff, as `dix diff --output json` (dix 3) or `dix --output json` (dix 2).
-It finds the new closure through the `--out-link` of the `nix build` that nh runs beside it.
+It finds the new closure through the `--out-link` that nh passes to `nix build`.
 The table lists the system's own packages and every added or removed package, each with its version before and after, the part that changed highlighted, and its size change.
 Each row starts with an arrow or sign for the change: ↑ upgraded, ↓ downgraded, + added, − removed.
 The sign carries the meaning in any theme. An upgrade keeps the plain text color, because some themes make their accent color red. The lock file table marks its inputs the same way.
@@ -97,10 +98,11 @@ A size that grew shows in the error color (red) and one that shrank in the succe
 | `nom build`, `nom copy`, `nom flake` | Card. tern-nom runs `nix` with `-v --log-format internal-json`. |
 | `nom flake metadata`, `nom flake show` | Card with the flake's fields and inputs, or its outputs, as trees. tern-nom adds `--json` and draws the result. Piped into another program, or given `--json`, nix's own output goes to stdout as usual. |
 | `nom develop`, `nom shell` | Card while nix builds the environment, then `nix develop` or `nix shell` with the same arguments, as nom does. |
-| `nom --json` | Card. tern-nom reads nix's log from stdin. nh runs nom this way, and so does a direnv `use flake … 2> >(nom --json >&2)`. |
+| `nom --json` | Card. tern-nom reads nix's log from stdin. A direnv `use flake … 2> >(nom --json >&2)` runs nom this way. |
+| `nix build` run by the flake's `nh` | Card. tern-nom runs the real `nix build` with `-v --log-format internal-json`. Every other `nix` command that nh runs goes to the real `nix` unchanged. |
 | plain `nom`, `nom-build`, `nom-shell` | The real `nom`. |
 
-Piped into `nom --json`, the card shows once nix builds, fetches, or has run for a second. A direnv reload that finds everything cached leaves no card behind. Under direnv, the card is titled with the project directory.
+Piped into `nom --json` or under nh, the card shows once nix builds, fetches, or has run for a second. A direnv reload that finds everything cached leaves no card behind. Under direnv, the card is titled with the project directory.
 
 The card draws only if all of these are true:
 
@@ -110,6 +112,7 @@ The card draws only if all of these are true:
 - Tern answers the surface-protocol handshake on `/dev/tty`.
 
 Otherwise tern-nom runs the binary named by `TERN_NOM_REAL` with the same arguments. The package sets `TERN_NOM_REAL` to nix-output-monitor's `nom`.
+Under nh, a failed handshake leaves nix's plain log, because nh's own progress display is already off.
 
 ssh does not forward `TERN_PANE`, so builds on a remote host get the plain `nom` table.
 

@@ -1,5 +1,6 @@
-//! The controlling terminal, opened directly: under `nh`, nom's stdin is a
-//! pipe from nix, so the SDK's stdin/stdout `Tty` can't be used.
+//! The controlling terminal, opened directly: under a pipe or `nh`, nom's
+//! stdin or stdout is not the terminal, so the SDK's stdin/stdout `Tty`
+//! can't be used.
 
 use std::{
     fs::{File, OpenOptions},
