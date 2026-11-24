@@ -1533,4 +1533,18 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn flake_metadata_draws_after_fetching_inputs() {
+        use crate::state::tests::feed;
+        let mut state =
+            feed(r#"@nix {"action":"msg","level":4,"msg":"fetching github input 'github:a/b'"}"#);
+        assert_eq!(state.inputs.len(), 1);
+        state.flake = crate::flake::Output::parse(
+            "metadata",
+            br#"{"locks":{"root":"root","nodes":{"root":{"inputs":{"b":"b"}},"b":{"locked":{"type":"github","owner":"a","repo":"b","rev":"0123456789"}}}}}"#,
+        );
+        tern_sdk::reconcile::Doc::from_view(view(&state, "nom", None))
+            .expect("a card with both input sections");
+    }
 }

@@ -197,7 +197,7 @@ fn metadata(v: &Value) -> Vec<Node> {
                 ui::section()
                     .head(format!("Inputs · {count}"))
                     .collapsible(true)
-                    .key("inputs")
+                    .key("locked")
                     .child(tree)
                     .into(),
             );
